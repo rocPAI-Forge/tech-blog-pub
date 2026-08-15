@@ -85,7 +85,9 @@ python -m simstudio.scripts.record \
 
 SimStudio 站在许多开源项目之上：[LeRobot](https://github.com/huggingface/lerobot)、[MuJoCo](https://github.com/google-deepmind/mujoco)、[The Robot Studio SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100)、[joycon-robotics](https://github.com/box2ai-robotics/joycon-robotics)、[Rerun](https://github.com/rerun-io/rerun) 等。完整列表见项目 [ACKNOWLEDGEMENTS.md](https://github.com/alexhegit/so101-simstudio/blob/main/ACKNOWLEDGEMENTS.md)。
 
-**动手建议：** clone 仓库 → 跑 `make smoke-keyboard-record` → 录 1–2 个 episode → 用 `dataset_viz` 或 replay 脚本回放。欢迎 issue / PR；下一篇 blog 会跟进具体实践与数据质量细节。
+**动手建议：** clone 仓库 → 跑 `make smoke-keyboard-record` → 录 1–2 个 episode → 用 `dataset_viz` 或 replay 脚本回放。欢迎 issue / PR。
+
+**系列续篇：** [闭环打通：Lab 01 抓取放置（v0.1.3）](../so101-simstudio-lab01-pnp/README.md) — 仿真示范 → ACT / SmolVLA 训练 → MuJoCo 评估。
 
 - **代码**：[github.com/alexhegit/so101-simstudio](https://github.com/alexhegit/so101-simstudio)
 - **技术详解**：[README-details.md](README-details.md)
@@ -167,7 +169,9 @@ More docs: [DESIGN.md](https://github.com/alexhegit/so101-simstudio/blob/main/DE
 
 SimStudio stands on open source: [LeRobot](https://github.com/huggingface/lerobot), [MuJoCo](https://github.com/google-deepmind/mujoco), [The Robot Studio SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100), [joycon-robotics](https://github.com/box2ai-robotics/joycon-robotics), [Rerun](https://github.com/rerun-io/rerun), and more. See [ACKNOWLEDGEMENTS.md](https://github.com/alexhegit/so101-simstudio/blob/main/ACKNOWLEDGEMENTS.md) in the repo.
 
-**Try it:** clone → run `make smoke-keyboard-record` → record 1–2 episodes → replay with `dataset_viz` or replay scripts. Issues and PRs welcome; follow-up posts will cover hands-on workflows and data quality.
+**Try it:** clone → run `make smoke-keyboard-record` → record 1–2 episodes → replay with `dataset_viz` or replay scripts. Issues and PRs welcome.
+
+**Series follow-up:** [Closing the Loop: Lab 01 Pick-and-Place (v0.1.3)](../so101-simstudio-lab01-pnp/README.md) — sim demos → ACT / SmolVLA train → MuJoCo eval.
 
 - **Code:** [github.com/alexhegit/so101-simstudio](https://github.com/alexhegit/so101-simstudio)
 - **Deep-dive:** [README-details.md](README-details.md)

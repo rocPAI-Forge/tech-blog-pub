@@ -1,0 +1,11 @@
+# Hugo 站点发布元数据(sidecar) — 供 rocPAI-Forge.github.io 的 sync_from_pub.py 读取
+# 只影响网站发布,不影响本仓库在 GitHub 上的阅读。
+slug = "so101-simstudio-lab01"
+date = 2026-08-15
+author = "rocPAI-Lab"
+tags = ["ROCm", "LeRobot", "MuJoCo", "SO-101", "VLA"]
+title_zh = "闭环打通：SO-101 SimStudio Lab 01 抓取放置（ROCm）"
+title_en = "Closing the Loop: SO-101 SimStudio Lab 01 Pick-and-Place on ROCm"
+
+# 是否发布到网站(false 则生成器跳过)
+publish = true
