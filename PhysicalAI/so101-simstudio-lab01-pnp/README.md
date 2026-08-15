@@ -2,7 +2,7 @@
 
 > Closing the Loop: SO-101 SimStudio Lab 01 Pick-and-Place on ROCm
 
-**语言 / Language:** [中文](#中文) · [English](#english) · ⏱️ ~3 min read
+**语言 / Language:** [中文](#中文) · [English](#english) · ⏱️ ~4 min read
 
 > 📖 想看复现命令、参考成功率与 `reset_arm` 协议细节？ → [**技术详解版 / Deep-dive**](README-details.md)
 
@@ -19,6 +19,22 @@
 **v0.1.3**（tag [`release-v0.1.3`](https://github.com/rocPAI-Forge/so101-simstudio/releases/tag/release-v0.1.3)）把链路再往前推一步——**Lab 01 抓取放置**：仿真示范 → ACT / SmolVLA 训练 → MuJoCo 闭环评估，并给出可下载的 Hub 参考资产。
 
 示范可以用 **键盘 / Joy-Con / Leader** 任一遥操作（同一套 LeRobot v3.0 录制管线）。Lab 01 公开参考数据用 Leader 采集；你本地完全可以用键盘或 Joy-Con 走同一套 lab 脚本。
+
+### 模仿学习在做什么
+
+**模仿学习（Imitation Learning / 行为克隆）**的目标不是手写抓取规则，而是让策略从**专家示范**里学会「看见什么 → 做什么」。人（或遥操作者）完成若干次成功抓取放置；策略在观测（关节角、相机画面等）上拟合专家动作，再在仿真里闭环 rollout，用成功率检验是否真的学会了任务。
+
+和强化学习不同：这里**不依赖奖励函数**，数据质量与覆盖面直接决定上限。Lab 01 把这条工业界常用的入门路径拆成三步：
+
+| 阶段 | 作用 |
+| --- | --- |
+| **1. 数据抓取** | 遥操作采专家轨迹 → LeRobot v3.0 数据集（状态 + 图像 + 动作） |
+| **2. Policy 训练** | 行为克隆：最小化预测动作与示范动作的差距（ACT / SmolVLA） |
+| **3. Eval** | 策略接管机械臂，在 MuJoCo 里闭环跑任务，统计成功/失败 |
+
+```
+teleop demos  →  dataset  →  train (BC)  →  closed-loop eval
+```
 
 ### Lab 01 一条线
 
@@ -41,6 +57,12 @@
 | **SmolVLA** | **11/50（22%）** |
 
 固定位姿 demo 下 ACT 更高、SmolVLA 仍不稳定——说明「会训」≠「课堂演示一定稳」。成功标准与失败模式写在 lab runbook §6。
+
+### Eval 实拍（ACT 固定位姿）
+
+MuJoCo GUI 闭环评估片段（裁剪并约 1.5× 加速；完整 mp4 见 `assets/videos/`）：
+
+![ACT pick-and-place eval in MuJoCo](assets/gifs/eval-act-pnp.gif)
 
 ![ACT 50K 训练损失（MI300X）](assets/images/act-loss-mi300x-50k.png)
 
@@ -72,6 +94,22 @@ The [intro post](../so101-simstudio/README.md) wired SO-101, MuJoCo, and LeRobot
 
 Demos work with **keyboard, Joy-Con, or leader** on the same LeRobot v3.0 record path. The published Lab 01 reference set was collected with a leader arm; you can run the same lab scripts with keyboard or Joy-Con locally.
 
+### What imitation learning is doing here
+
+**Imitation learning (behavior cloning)** does not hand-code a grasp planner. A policy learns **observation → action** from **expert demos**: a human teleoperates successful pick-and-place episodes; the network fits those actions given joint state and camera frames; then you run closed-loop rollouts in sim and score success.
+
+Unlike RL, there is **no reward function** to tune — data quality and coverage set the ceiling. Lab 01 packages the usual industry starter loop in three steps:
+
+| Stage | Role |
+| --- | --- |
+| **1. Data collection** | Teleop expert trajectories → LeRobot v3.0 dataset (state + images + actions) |
+| **2. Policy training** | Behavior cloning: match predicted actions to demos (ACT / SmolVLA) |
+| **3. Eval** | Policy drives the arm in MuJoCo closed loop; count success / failure |
+
+```
+teleop demos  →  dataset  →  train (BC)  →  closed-loop eval
+```
+
 ### One Lab 01 line
 
 | Stage | What |
@@ -93,6 +131,12 @@ On **MI300X 50K** checkpoints with full-range random cube spawn (details in the 
 | **SmolVLA** | **11/50 (22%)** |
 
 Fixed-pose demos raise ACT further; SmolVLA stays brittle — “trainable” ≠ “classroom-stable.” Success criteria and failure modes are in the lab runbook §6.
+
+### Eval footage (ACT fixed pose)
+
+Closed-loop MuJoCo GUI clip (trimmed, ~1.5× speed; full mp4 under `assets/videos/`):
+
+![ACT pick-and-place eval in MuJoCo](assets/gifs/eval-act-pnp.gif)
 
 ![ACT 50K training loss (MI300X)](assets/images/act-loss-mi300x-50k.png)
 
