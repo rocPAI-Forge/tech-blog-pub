@@ -4,9 +4,9 @@
 
 **语言 / Language:** [中文](#中文) · [English](#english) · 📄 技术详解版 / Deep-dive
 
-> ⚡ 只想 3 分钟快速了解？ → [**精简版 / Concise digest**](README.md)
+> ⚡ 只想快速了解？ → [**精简版 / Concise digest**](README.md)
 
-> TL;DR：[SO-101 SimStudio](https://github.com/rocPAI-Forge/so101-simstudio) **v0.1.3** 提供 Lab 01：仿真示范（键盘 / Joy-Con / Leader）→ ACT / SmolVLA 训练 → MuJoCo sim2sim 评估。参考指标来自同一 50 集 PnP 数据上的 MI300X 50K 检查点。权威 runbook：[labs/lab01_pnp/lab01_pnp.md](https://github.com/rocPAI-Forge/so101-simstudio/blob/main/labs/lab01_pnp/lab01_pnp.md)。
+> TL;DR：[SO-101 SimStudio](https://github.com/rocPAI-Forge/so101-simstudio) **v0.1.3** 提供 Lab 01：仿真示范（键盘 / Joy-Con / Leader）→ 模仿学习训练（ACT / SmolVLA）→ MuJoCo sim2sim 评估。参考指标来自同一 50 集 PnP 数据上的 MI300X 50K 检查点。权威 runbook：[labs/lab01_pnp/lab01_pnp.md](https://github.com/rocPAI-Forge/so101-simstudio/blob/main/labs/lab01_pnp/lab01_pnp.md)。
 
 > 系列上文：[项目介绍 v0.1.2](../so101-simstudio/README-details.md) · [站上精简版](https://rocpai-forge.github.io/en/posts/so101-simstudio/)
 
@@ -24,7 +24,42 @@ v0.1.2 解决 **ROCm 上遥操作 + LeRobot v3.0 录制**。v0.1.3 把 ROADMAP �
 
 示范 **不绑定 Leader**：三种 teleop 共用录制管线；公开参考轨迹用 Leader 采，仅为数据质量示范。
 
-### 1. 管线与布局原则
+### 1. 模仿学习：作用、原理与三步流程
+
+#### 为什么需要它
+
+抓取放置这类接触丰富的操作，用几何脚本或硬编码状态机往往脆弱：光照、方块位姿、相机噪声一变就失效。**模仿学习（Imitation Learning）**把「会做任务的人」当成老师——用示范数据教策略，而不是先设计完美奖励或完整规划器。对 Physical AI / 机器人入门，它是最常见的 **record → train → eval** 闭环：先证明「能从演示学会」，再谈 RL 微调、更大 VLA、真机迁移。
+
+Lab 01 用的是其中最直接的一类：**行为克隆（Behavior Cloning, BC）**——把专家轨迹当成监督学习标签。
+
+#### 原理（直觉）
+
+每一步，专家看到观测 \(o_t\)（关节状态、腕部/场景相机图像等），发出动作 \(a_t\)（关节目标或末端速度等）。策略 \(\pi_\theta(a \mid o)\) 在示范分布上最小化预测与 \(a_t\) 的差距（MSE、交叉熵、动作分块损失等，视 ACT / SmolVLA 而定）。
+
+训练时策略是**开环拟合轨迹**；真正有用要看 **闭环 eval**：策略自己的动作会改变下一帧观测，误差会累积（covariate shift）。所以必须：
+
+1. 示范尽量覆盖任务变化（方块位置、接触失败后的恢复姿态等）；
+2. 用 MuJoCo 闭环评估，而不是只看训练 loss。
+
+ACT 预测一段动作 chunk；SmolVLA 走视觉–语言–动作路线。二者都是「从演示学控制」，实现与容量不同——Lab 01 用**同一份数据**对照，方便理解数据量与任务难度对策略族的影响。
+
+#### 流程如何落到 Lab 01
+
+```
+① 数据抓取          ② Policy 训练           ③ Eval
+teleop → LeRobot   lerobot-train (BC)    策略闭环 → 成功率
+v3.0 数据集         ACT | SmolVLA         MuJoCo + 任务判据
+```
+
+| 步骤 | Lab 01 入口 | 产出 / 判据 |
+| --- | --- | --- |
+| **数据抓取** | `record.cmd` + 键盘 / Joy-Con / Leader | 每集：观测流 + 动作流；可推到 Hub |
+| **Policy 训练** | `train.cmd` / `train_act.cmd` | checkpoint；loss 曲线（见下图） |
+| **Eval** | `eval.cmd` + lab YAML | 方块是否入盒等成功标准（runbook §6） |
+
+旋钮集中在 `_env.sh`（`LAB01_*`）。没有「第三步」，模仿学习闭环就不完整——训练 loss 下降只说明拟合了示范，不代表会抓。
+
+### 2. 管线与布局原则
 
 ```
 teleop (keyboard | joycon | leader)
@@ -38,7 +73,7 @@ Lab 约定（可复用到后续 lab，允许因目标偏离并写明）：见 [l
 - **lab-bound**：`labs/lab01_pnp/configs/`（demo / fixed / rename_map）
 - **foundational**：`configs/so101_mujoco_pick_leader.yaml` 等仍在仓库根
 
-### 2. `reset_arm`（录制 vs 评估）
+### 3. `reset_arm`（录制 vs 评估）
 
 | 值 | 含义 | 典型场景 |
 | --- | --- | --- |
@@ -47,7 +82,7 @@ Lab 约定（可复用到后续 lab，允许因目标偏离并写明）：见 [l
 
 Lab 01 **有意**在 eval YAML 里对照：SmolVLA → `home`，ACT → `follow`。比成功率时必须成对记录协议（runbook §6.2 / §6.4）。
 
-### 3. 参考测量（证据）
+### 4. 参考测量（证据）
 
 同一 lab01-pnp 50 集、MI300X 50K 检查点（摘自 runbook §6.4）：
 
@@ -61,9 +96,18 @@ Lab 01 **有意**在 eval YAML 里对照：SmolVLA → `home`，ACT → `follow`
 
 ![ACT 50K 训练损失（MI300X）](assets/images/act-loss-mi300x-50k.png)
 
-解读：本数据上 ACT 全范围明显强于 SmolVLA；收窄/固定 spawn 更适合演示，**不能**代替全范围泛化数字。
+解读：本数据上 ACT 全范围明显强于 SmolVLA；收窄/固定 spawn 更适合演示，**不能**代替全范围泛化数字。Loss 只能说明 BC 拟合进度；上表才是模仿学习闭环里的任务级证据。
 
-### 4. 复现（最短路径）
+### 4.1 Eval GUI 片段
+
+固定位姿 ACT 闭环录屏（约 1:12–1:43 裁剪，1.5× 加速，960p）——策略在无人类输入下完成抓取放置：
+
+![ACT pick-and-place eval](assets/gifs/eval-act-pnp.gif)
+
+- 视频：[`assets/videos/eval-act-pnp.mp4`](assets/videos/eval-act-pnp.mp4)
+- 配置：`rollout_act_demo_fixed.yaml`，`n_action_steps=100`，本地 `checkpoints/last`
+
+### 5. 复现（最短路径）
 
 ```bash
 git clone --recursive https://github.com/rocPAI-Forge/so101-simstudio.git
@@ -88,7 +132,7 @@ Hub 示例：
 - SmolVLA: [alexhegit/so101-simstudio-lab01-pnp-smolvla](https://huggingface.co/alexhegit/so101-simstudio-lab01-pnp-smolvla)
 - ACT: [alexhegit/so101-simstudio-lab01-pnp-act](https://huggingface.co/alexhegit/so101-simstudio-lab01-pnp-act)
 
-### 5. 破坏性变更（自 v0.1.2 脚本路径）
+### 6. 破坏性变更（自 v0.1.2 脚本路径）
 
 - 根目录 `configs/so101_mujoco_rollout*.yaml` → `labs/lab01_pnp/configs/rollout_*.yaml`
 - `eval_act.cmd` 删除 → 统一 `eval.cmd` + `LAB01_POLICY_PATH` / `LAB01_EVAL_CONFIG`
@@ -109,7 +153,42 @@ v0.1.2 delivered **ROCm teleop + LeRobot v3.0 recording**. v0.1.3 lands BC train
 
 Demos are **not leader-only**: all three teleop backends share the record pipeline. The public reference trajectories used a leader for quality; keyboard / Joy-Con work with the same lab scripts.
 
-### 1. Pipeline and layout
+### 1. Imitation learning: role, idea, and the three-step loop
+
+#### Why it matters
+
+Contact-rich pick-and-place is brittle if you hard-code geometry or a fragile state machine — lighting, cube pose, and camera noise break scripts quickly. **Imitation learning** treats a skilled teleoperator as the teacher: learn from demos instead of inventing a perfect reward or planner first. For Physical AI / robot starters, the standard closed loop is **record → train → eval**: prove “learnable from demos,” then consider RL fine-tuning, larger VLAs, or real-robot transfer.
+
+Lab 01 uses the most direct flavor: **behavior cloning (BC)** — expert trajectories as supervised labels.
+
+#### Core idea
+
+At each step the expert sees observation \(o_t\) (joint state, wrist/scene images, …) and produces action \(a_t\) (joint targets or end-effector rates). Policy \(\pi_\theta(a \mid o)\) minimizes the gap to \(a_t\) on the demo distribution (MSE, CE, action-chunk losses — depending on ACT / SmolVLA).
+
+Training fits trajectories **open-loop**; what matters is **closed-loop eval**: the policy’s own actions change the next observation, and errors compound (covariate shift). So you need:
+
+1. Demos that cover task variation (cube spawn, recovery after near-misses, …);
+2. MuJoCo closed-loop scoring — not training loss alone.
+
+ACT predicts action chunks; SmolVLA follows a vision–language–action path. Both learn control from demos with different capacity. Lab 01 trains them on the **same** dataset so you can see how data scale and task difficulty hit each family.
+
+#### How the loop maps onto Lab 01
+
+```
+① Data collection     ② Policy training        ③ Eval
+teleop → LeRobot     lerobot-train (BC)      policy closed loop
+v3.0 dataset          ACT | SmolVLA           MuJoCo + success criteria
+```
+
+| Step | Lab 01 entry | Output / criterion |
+| --- | --- | --- |
+| **Data collection** | `record.cmd` + keyboard / Joy-Con / leader | Episodes: observations + actions; optional Hub upload |
+| **Policy training** | `train.cmd` / `train_act.cmd` | Checkpoints; loss curves (figures below) |
+| **Eval** | `eval.cmd` + lab YAMLs | Task success (cube in container, …) — runbook §6 |
+
+Knobs live in `_env.sh` (`LAB01_*`). Without step ③, the IL loop is incomplete — lower loss only means “fit the demos,” not “can pick.”
+
+### 2. Pipeline and layout
 
 ```
 teleop (keyboard | joycon | leader)
@@ -120,7 +199,7 @@ teleop (keyboard | joycon | leader)
 
 Lab conventions (reusable; document deviations): [labs/README.md](https://github.com/rocPAI-Forge/so101-simstudio/blob/main/labs/README.md).
 
-### 2. `reset_arm`
+### 3. `reset_arm`
 
 | Value | Meaning | Typical use |
 | --- | --- | --- |
@@ -129,7 +208,7 @@ Lab conventions (reusable; document deviations): [labs/README.md](https://github
 
 Lab 01 **intentionally** contrasts eval YAMLs: SmolVLA → `home`, ACT → `follow`. Always pair metrics with protocol (§6.2 / §6.4).
 
-### 3. Reference measurements
+### 4. Reference measurements
 
 Same 50-episode lab01-pnp set, MI300X 50K checkpoints (from runbook §6.4):
 
@@ -143,9 +222,18 @@ Same 50-episode lab01-pnp set, MI300X 50K checkpoints (from runbook §6.4):
 
 ![ACT 50K training loss (MI300X)](assets/images/act-loss-mi300x-50k.png)
 
-On this data, ACT full-range ≫ SmolVLA; narrowed/fixed spawn helps demos but is **not** a substitute for full-range generalization numbers.
+On this data, ACT full-range ≫ SmolVLA; narrowed/fixed spawn helps demos but is **not** a substitute for full-range generalization numbers. Loss tracks BC fit; the table is the task-level evidence for the IL loop.
 
-### 4. Reproduce (shortest path)
+### 4.1 Eval GUI clip
+
+Fixed-pose ACT closed-loop screencast (trim ~1:12–1:43, 1.5×, 960p) — policy completes pick-and-place with no human input:
+
+![ACT pick-and-place eval](assets/gifs/eval-act-pnp.gif)
+
+- Video: [`assets/videos/eval-act-pnp.mp4`](assets/videos/eval-act-pnp.mp4)
+- Config: `rollout_act_demo_fixed.yaml`, `n_action_steps=100`, local `checkpoints/last`
+
+### 5. Reproduce (shortest path)
 
 ```bash
 git clone --recursive https://github.com/rocPAI-Forge/so101-simstudio.git
@@ -159,7 +247,7 @@ make rocm-sync && source .venv-rocm/bin/activate
 ./labs/lab01_pnp/train_act.cmd
 ```
 
-### 5. Breaking changes
+### 6. Breaking changes
 
 - Root rollout YAMLs moved under `labs/lab01_pnp/configs/`
 - `eval_act.cmd` removed → unified `eval.cmd`
