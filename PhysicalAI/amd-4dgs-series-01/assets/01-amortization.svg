@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="850" viewBox="0 0 1440 850" role="img" aria-labelledby="title desc">
+  <title id="title">先构建，再复用：新画面查询的成本摊销</title>
+  <desc id="desc">结构示意图。直接生成的累计成本从零开始增长；资产路线先支付当前场景的构建成本 B，之后每帧渲染成本较低。曲线交点不是实测数据。重复播放可以缓存，换镜头可以复用资产，换内容则需要检查资产失效范围。</desc>
+  <defs>
+    <marker id="axis" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="none" stroke="#718295" stroke-width="1.3"/></marker>
+  </defs>
+  <rect width="1440" height="850" rx="24" fill="#f6f8fc"/>
+  <g font-family="Noto Sans CJK SC, sans-serif" fill="#172c40">
+    <text x="54" y="55" font-size="18" font-weight="700" letter-spacing="2" fill="#47627b">01 / WHY REUSE</text>
+    <text x="54" y="108" font-size="36" font-weight="700">先付构建成本，再降低每次查询成本</text>
+    <text x="54" y="149" font-size="23" fill="#52677b">关注新画面如何产生，而不是把所有播放都算成一次生成。</text>
+
+    <rect x="42" y="183" width="886" height="588" rx="20" fill="#ffffff"/>
+    <text x="126" y="230" font-size="23" font-weight="500">累计计算成本</text>
+    <g stroke="#e7edf4" stroke-width="1.5">
+      <path d="M130 350 H877 M130 450 H877 M130 550 H877"/>
+    </g>
+    <path d="M130 670 V267 M130 670 H889" fill="none" stroke="#718295" stroke-width="2" marker-end="url(#axis)"/>
+    <path d="M130 285 V259" fill="none" stroke="#718295" stroke-width="2" marker-end="url(#axis)"/>
+    <text x="130" y="711" font-size="22" fill="#607589">0</text>
+    <text x="877" y="714" text-anchor="end" font-size="23">需要新合成的画面数 N →</text>
+
+    <path d="M130 670 L868 283" fill="none" stroke="#cb552e" stroke-width="6" stroke-linecap="round"/>
+    <path d="M130 477 L868 401" fill="none" stroke="#2668cf" stroke-width="6" stroke-linecap="round"/>
+    <path d="M79 477 H97 M87 477 V670 M79 670 H97" fill="none" stroke="#2668cf" stroke-width="2"/>
+    <rect x="59" y="548" width="55" height="45" rx="10" fill="#edf3fe"/>
+    <text x="87" y="580" text-anchor="middle" font-size="28" font-weight="700" fill="#2668cf">B</text>
+    <text x="161" y="423" font-size="23" fill="#2668cf">当前场景的构建投入</text>
+
+    <path d="M588 430 V670" stroke="#8294a7" stroke-width="2" stroke-dasharray="6 7"/>
+    <circle cx="588" cy="430" r="8" fill="#172c40" stroke="white" stroke-width="3"/>
+    <rect x="524" y="574" width="129" height="43" rx="9" fill="#edf1f6"/>
+    <text x="588" y="604" text-anchor="middle" font-size="23">成本交点</text>
+    <text x="565" y="266" font-size="25" font-weight="700" fill="#cb552e">直接生成：g × N</text>
+    <text x="614" y="489" font-size="25" font-weight="700" fill="#2668cf">资产：B + r × N</text>
+    <text x="164" y="749" font-size="21" fill="#607589">前提：同等质量与控制要求，且每帧渲染比生成便宜。</text>
+
+    <rect x="951" y="183" width="447" height="588" rx="20" fill="#eaf0f7"/>
+    <text x="983" y="233" font-size="25" font-weight="700">内容消费与编辑，区别在哪里？</text>
+
+    <rect x="977" y="257" width="395" height="143" rx="14" fill="#ffffff"/>
+    <text x="1001" y="298" font-size="25" font-weight="700">固定成片 · 反复播放</text>
+    <text x="1001" y="339" font-size="23" fill="#52677b">两条路线都能缓存成片。</text>
+    <text x="1001" y="373" font-size="23" fill="#52677b">播放次数不应计入这里的 N。</text>
+
+    <rect x="977" y="416" width="395" height="143" rx="14" fill="#ffffff"/>
+    <text x="1001" y="457" font-size="25" font-weight="700">自由浏览 · 重新运镜</text>
+    <text x="1001" y="498" font-size="23" fill="#52677b">查询同一内容的新画面。</text>
+    <text x="1001" y="532" font-size="23" fill="#52677b">已有 4DGS 通常可以复用。</text>
+
+    <rect x="977" y="575" width="395" height="167" rx="14" fill="#ffffff"/>
+    <text x="1001" y="616" font-size="25" font-weight="700">改动作 · 改场景内容</text>
+    <text x="1001" y="657" font-size="23" fill="#52677b">先看哪些结果需要重做。</text>
+    <text x="1001" y="691" font-size="23" fill="#52677b">新构建成本不在左图单版本</text>
+    <text x="1001" y="725" font-size="23" fill="#52677b">的曲线内，不能当作免费。</text>
+
+    <text x="54" y="818" font-size="21" fill="#607589">根据 Jon Barron 的论点原创绘制 · 结构示意，非性能实测 · 显式 3D 并非摊销的唯一方式</text>
+    <text x="1385" y="818" text-anchor="end" font-size="18" font-weight="700" fill="#47627b">PHI MEDIA LAB</text>
+  </g>
+</svg>
