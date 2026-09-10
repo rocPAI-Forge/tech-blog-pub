@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1030" viewBox="0 0 1440 1030" role="img" aria-labelledby="title desc">
+  <title id="title">Phi 三项目：从 AMD Instinct 上的生成重建，到 Radeon 上的渲染交付</title>
+  <desc id="desc">Generation 在 MI300X 和 ROCm 上调用外部 4DAnyone，输出同步的图像、相机和时间。Reconstruction 使用 ROCm PyTorch 和 AMD gsplat 优化连续时间 Gaussian 并导出显式资产。Viewer 在 CPU 桥接后用 Radeon Vulkan 渲染，经 DMA-BUF、VA-API、H.264 和 WebRTC 传递给浏览器；浏览器返回相机与时间控制。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="none" stroke="#536b82" stroke-width="1.8" stroke-linejoin="round"/></marker>
+    <marker id="bluearrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="none" stroke="#2668cf" stroke-width="1.8" stroke-linejoin="round"/></marker>
+  </defs>
+  <rect width="1440" height="1030" rx="24" fill="#f6f8fc"/>
+  <g font-family="Noto Sans CJK SC, sans-serif" fill="#172c40">
+    <text x="48" y="52" font-size="18" font-weight="700" letter-spacing="2" fill="#47627b">02 / BUILD → REUSE → DELIVER</text>
+    <text x="48" y="105" font-size="36" font-weight="700">一次构建，独立交付：AMD 生态中的三个项目</text>
+    <text x="48" y="146" font-size="23" fill="#52677b">文件与资产连接各阶段；训练环境不需要跟着内容一起部署。</text>
+
+    <rect x="40" y="183" width="880" height="66" rx="13" fill="#172c40"/>
+    <text x="480" y="226" text-anchor="middle" font-size="26" font-weight="700" fill="#ffffff">AMD Instinct MI300X · gfx942 · ROCm</text>
+    <rect x="1000" y="183" width="400" height="66" rx="13" fill="#235b67"/>
+    <text x="1200" y="226" text-anchor="middle" font-size="26" font-weight="700" fill="#ffffff">AMD Radeon · Linux</text>
+
+    <rect x="40" y="274" width="400" height="398" rx="18" fill="#ffffff" stroke="#d9e3ee" stroke-width="2"/>
+    <rect x="40" y="274" width="400" height="7" rx="3" fill="#7762bf"/>
+    <text x="66" y="322" font-size="29" font-weight="700">01  Generation</text>
+    <text x="66" y="361" font-size="23" fill="#52677b">单目人物视频 → 同步多视角</text>
+    <path d="M66 384 H414" stroke="#e1e8f0" stroke-width="2"/>
+    <text x="66" y="426" font-size="25" font-weight="500">外部 4DAnyone 推理</text>
+    <text x="66" y="465" font-size="23" fill="#52677b">ROCm PyTorch · SDPA</text>
+    <text x="66" y="514" font-size="23">相机变换 · 时间对齐 · RGB</text>
+    <rect x="62" y="548" width="356" height="98" rx="12" fill="#f0edf9"/>
+    <text x="80" y="586" font-size="24" font-weight="700" fill="#594991">输出：标定观测包</text>
+    <text x="80" y="621" font-size="21" fill="#594991">图像 + 相机 + 时间戳</text>
+
+    <path d="M446 466 H511" stroke="#536b82" stroke-width="3" marker-end="url(#arrow)"/>
+    <text x="480" y="445" text-anchor="middle" font-size="20" fill="#52677b">观测</text>
+
+    <rect x="520" y="274" width="400" height="398" rx="18" fill="#ffffff" stroke="#d9e3ee" stroke-width="2"/>
+    <rect x="520" y="274" width="400" height="7" rx="3" fill="#2668cf"/>
+    <text x="546" y="322" font-size="29" font-weight="700">02  Reconstruction</text>
+    <text x="546" y="361" font-size="23" fill="#52677b">多视角观测 → 连续时间 4DGS</text>
+    <path d="M546 384 H894" stroke="#e1e8f0" stroke-width="2"/>
+    <text x="546" y="426" font-size="25" font-weight="500">匹配 · 三角化 · 初始化</text>
+    <text x="546" y="465" font-size="23" fill="#52677b">PyTorch · AMD gsplat</text>
+    <text x="546" y="514" font-size="23">时间求值 → 可微渲染 → 优化</text>
+    <rect x="542" y="548" width="356" height="98" rx="12" fill="#edf3fe"/>
+    <text x="560" y="586" font-size="24" font-weight="700" fill="#2668cf">输出：显式 AssetBundle</text>
+    <text x="560" y="621" font-size="21" fill="#2668cf">JSON + Safetensors</text>
+
+    <path d="M926 466 H991" stroke="#536b82" stroke-width="3" marker-end="url(#arrow)"/>
+    <text x="960" y="445" text-anchor="middle" font-size="20" fill="#52677b">资产</text>
+
+    <rect x="1000" y="274" width="400" height="398" rx="18" fill="#ffffff" stroke="#d9e3ee" stroke-width="2"/>
+    <rect x="1000" y="274" width="400" height="7" rx="3" fill="#23857a"/>
+    <text x="1026" y="322" font-size="29" font-weight="700">03  Viewer</text>
+    <text x="1026" y="361" font-size="23" fill="#52677b">CPU bridge → 原生 Player</text>
+    <path d="M1026 384 H1374" stroke="#e1e8f0" stroke-width="2"/>
+    <text x="1026" y="426" font-size="25" font-weight="500">Rust · wgpu / WGSL</text>
+    <text x="1026" y="465" font-size="23" fill="#52677b">Vulkan / RADV 光栅化</text>
+    <text x="1026" y="514" font-size="23">BGRA → DMA-BUF → VA-API</text>
+    <rect x="1022" y="548" width="356" height="98" rx="12" fill="#eaf5f1"/>
+    <text x="1040" y="586" font-size="24" font-weight="700" fill="#216f66">输出：H.264 / WebRTC</text>
+    <text x="1040" y="621" font-size="21" fill="#216f66">GPU 渲染 + 硬件编码</text>
+
+    <rect x="40" y="711" width="880" height="259" rx="18" fill="#eaf0f7"/>
+    <text x="66" y="756" font-size="26" font-weight="700">两类优化，两个复用边界</text>
+    <text x="66" y="801" font-size="24" fill="#2668cf">降低 B：当前内容的生成与重建成本</text>
+    <text x="66" y="839" font-size="23" fill="#52677b">模型权重跨场景复用；每个新场景仍需推理与优化。</text>
+    <path d="M66 860 H894" stroke="#cfdae7" stroke-width="1.5"/>
+    <text x="66" y="902" font-size="24" fill="#216f66">降低 r：已有资产的一次新画面查询成本</text>
+    <text x="66" y="940" font-size="23" fill="#52677b">同一内容版本可以换镜头、查时间；改内容需重新评估。</text>
+
+    <path d="M1075 678 V817" stroke="#536b82" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M1327 817 V681" stroke="#2668cf" stroke-width="3" marker-end="url(#bluearrow)"/>
+    <text x="1100" y="730" font-size="22" fill="#52677b">视频流</text>
+    <text x="1100" y="763" font-size="21" fill="#52677b">H.264</text>
+    <text x="1300" y="730" text-anchor="end" font-size="22" fill="#2668cf">相机 / 时间</text>
+    <text x="1300" y="763" text-anchor="end" font-size="21" fill="#2668cf">控制</text>
+    <rect x="1000" y="827" width="400" height="143" rx="18" fill="#ffffff" stroke="#d9e3ee" stroke-width="2"/>
+    <text x="1026" y="874" font-size="27" font-weight="700">浏览器 · 轻量接收端</text>
+    <text x="1026" y="915" font-size="23" fill="#52677b">解码与显示 · 交互输入</text>
+    <text x="1026" y="948" font-size="21" fill="#52677b">Gaussian 数据保留在服务端</text>
+
+    <text x="48" y="1008" font-size="20" fill="#607589">已验证的技术路径 · 计算 / 图形 / 媒体各用其长 · 不代表任意 AMD 硬件与依赖组合均已验证</text>
+    <text x="1392" y="1008" text-anchor="end" font-size="18" font-weight="700" fill="#47627b">PHI MEDIA LAB</text>
+  </g>
+</svg>

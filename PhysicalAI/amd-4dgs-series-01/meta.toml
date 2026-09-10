@@ -1,0 +1,8 @@
+# Hugo 站点发布元数据(sidecar)
+slug = "amd-4dgs-series-01"
+date = 2026-09-10
+author = "Phi Media Lab × rocPAI-Lab"
+tags = ["ROCm", "4DGS", "Gaussian Splatting", "Physical AI"]
+title_zh = "让 Physical AI 看懂动态世界：在 AMD ROCm 上用单目视频构建 4DGS"
+title_en = "Helping Physical AI Understand Dynamic Worlds: Building 4DGS from Monocular Video on AMD ROCm"
+publish = true

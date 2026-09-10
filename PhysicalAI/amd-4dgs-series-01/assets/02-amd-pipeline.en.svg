@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1030" viewBox="0 0 1440 1030" role="img" aria-labelledby="title desc">
+  <title id="title">Three Phi projects: generation and reconstruction on AMD Instinct, rendering and delivery on Radeon</title>
+  <desc id="desc">Generation calls external 4DAnyone on MI300X and ROCm and outputs synchronized images, cameras, and time. Reconstruction uses ROCm PyTorch and AMD gsplat to optimize continuous-time Gaussians and export an explicit asset. After a CPU bridge, Viewer renders with Radeon Vulkan and sends frames to the browser through DMA-BUF, VA-API, H.264, and WebRTC; the browser returns camera and time controls.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="none" stroke="#536b82" stroke-width="1.8" stroke-linejoin="round"/></marker>
+    <marker id="bluearrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="none" stroke="#2668cf" stroke-width="1.8" stroke-linejoin="round"/></marker>
+  </defs>
+  <rect width="1440" height="1030" rx="24" fill="#f6f8fc"/>
+  <g font-family="Noto Sans, Arial, sans-serif" fill="#172c40">
+    <text x="48" y="52" font-size="18" font-weight="700" letter-spacing="2" fill="#47627b">02 / BUILD → REUSE → DELIVER</text>
+    <text x="48" y="105" font-size="36" font-weight="700">Build once, deliver independently: three projects in the AMD ecosystem</text>
+    <text x="48" y="146" font-size="23" fill="#52677b">Files and assets connect the stages; the training environment does not ship with the content.</text>
+
+    <rect x="40" y="183" width="880" height="66" rx="13" fill="#172c40"/>
+    <text x="480" y="226" text-anchor="middle" font-size="26" font-weight="700" fill="#ffffff">AMD Instinct MI300X · gfx942 · ROCm</text>
+    <rect x="1000" y="183" width="400" height="66" rx="13" fill="#235b67"/>
+    <text x="1200" y="226" text-anchor="middle" font-size="26" font-weight="700" fill="#ffffff">AMD Radeon · Linux</text>
+
+    <rect x="40" y="274" width="400" height="398" rx="18" fill="#ffffff" stroke="#d9e3ee" stroke-width="2"/>
+    <rect x="40" y="274" width="400" height="7" rx="3" fill="#7762bf"/>
+    <text x="66" y="322" font-size="29" font-weight="700">01  Generation</text>
+    <text x="66" y="361" font-size="23" fill="#52677b">Monocular character video → synchronized views</text>
+    <path d="M66 384 H414" stroke="#e1e8f0" stroke-width="2"/>
+    <text x="66" y="426" font-size="25" font-weight="500">External 4DAnyone inference</text>
+    <text x="66" y="465" font-size="23" fill="#52677b">ROCm PyTorch · SDPA</text>
+    <text x="66" y="514" font-size="23">Camera transforms · time alignment · RGB</text>
+    <rect x="62" y="548" width="356" height="98" rx="12" fill="#f0edf9"/>
+    <text x="80" y="586" font-size="24" font-weight="700" fill="#594991">Output: calibrated observation bundle</text>
+    <text x="80" y="621" font-size="21" fill="#594991">Images + cameras + timestamps</text>
+
+    <path d="M446 466 H511" stroke="#536b82" stroke-width="3" marker-end="url(#arrow)"/>
+    <text x="480" y="445" text-anchor="middle" font-size="20" fill="#52677b">Observations</text>
+
+    <rect x="520" y="274" width="400" height="398" rx="18" fill="#ffffff" stroke="#d9e3ee" stroke-width="2"/>
+    <rect x="520" y="274" width="400" height="7" rx="3" fill="#2668cf"/>
+    <text x="546" y="322" font-size="29" font-weight="700">02  Reconstruction</text>
+    <text x="546" y="361" font-size="23" fill="#52677b">Multi-view observations → continuous-time 4DGS</text>
+    <path d="M546 384 H894" stroke="#e1e8f0" stroke-width="2"/>
+    <text x="546" y="426" font-size="25" font-weight="500">Matching · triangulation · initialization</text>
+    <text x="546" y="465" font-size="23" fill="#52677b">PyTorch · AMD gsplat</text>
+    <text x="546" y="514" font-size="23">Temporal evaluation → differentiable rendering → optimization</text>
+    <rect x="542" y="548" width="356" height="98" rx="12" fill="#edf3fe"/>
+    <text x="560" y="586" font-size="24" font-weight="700" fill="#2668cf">Output: explicit AssetBundle</text>
+    <text x="560" y="621" font-size="21" fill="#2668cf">JSON + Safetensors</text>
+
+    <path d="M926 466 H991" stroke="#536b82" stroke-width="3" marker-end="url(#arrow)"/>
+    <text x="960" y="445" text-anchor="middle" font-size="20" fill="#52677b">Asset</text>
+
+    <rect x="1000" y="274" width="400" height="398" rx="18" fill="#ffffff" stroke="#d9e3ee" stroke-width="2"/>
+    <rect x="1000" y="274" width="400" height="7" rx="3" fill="#23857a"/>
+    <text x="1026" y="322" font-size="29" font-weight="700">03  Viewer</text>
+    <text x="1026" y="361" font-size="23" fill="#52677b">CPU bridge → native Player</text>
+    <path d="M1026 384 H1374" stroke="#e1e8f0" stroke-width="2"/>
+    <text x="1026" y="426" font-size="25" font-weight="500">Rust · wgpu / WGSL</text>
+    <text x="1026" y="465" font-size="23" fill="#52677b">Vulkan / RADV rasterization</text>
+    <text x="1026" y="514" font-size="23">BGRA → DMA-BUF → VA-API</text>
+    <rect x="1022" y="548" width="356" height="98" rx="12" fill="#eaf5f1"/>
+    <text x="1040" y="586" font-size="24" font-weight="700" fill="#216f66">Output: H.264 / WebRTC</text>
+    <text x="1040" y="621" font-size="21" fill="#216f66">GPU rendering + hardware encoding</text>
+
+    <rect x="40" y="711" width="880" height="259" rx="18" fill="#eaf0f7"/>
+    <text x="66" y="756" font-size="26" font-weight="700">Two optimizations, two reuse boundaries</text>
+    <text x="66" y="801" font-size="24" fill="#2668cf">Reduce B: generation and reconstruction cost for current content</text>
+    <text x="66" y="839" font-size="23" fill="#52677b">Model weights are reusable across scenes; each new scene still needs inference and optimization.</text>
+    <path d="M66 860 H894" stroke="#cfdae7" stroke-width="1.5"/>
+    <text x="66" y="902" font-size="24" fill="#216f66">Reduce r: cost of one new-frame query from an existing asset</text>
+    <text x="66" y="940" font-size="23" fill="#52677b">The same content version supports new cameras and time queries; content changes require reevaluation.</text>
+
+    <path d="M1075 678 V817" stroke="#536b82" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M1327 817 V681" stroke="#2668cf" stroke-width="3" marker-end="url(#bluearrow)"/>
+    <text x="1100" y="730" font-size="22" fill="#52677b">Video stream</text>
+    <text x="1100" y="763" font-size="21" fill="#52677b">H.264</text>
+    <text x="1300" y="730" text-anchor="end" font-size="22" fill="#2668cf">Camera / time</text>
+    <text x="1300" y="763" text-anchor="end" font-size="21" fill="#2668cf">Control</text>
+    <rect x="1000" y="827" width="400" height="143" rx="18" fill="#ffffff" stroke="#d9e3ee" stroke-width="2"/>
+    <text x="1026" y="874" font-size="27" font-weight="700">Browser · lightweight receiver</text>
+    <text x="1026" y="915" font-size="23" fill="#52677b">Decode and display · interactive input</text>
+    <text x="1026" y="948" font-size="21" fill="#52677b">Gaussian data remains on the server</text>
+
+    <text x="48" y="1008" font-size="20" fill="#607589">Validated technical path · compute / graphics / media each play to their strengths · not every AMD hardware and dependency combination is validated</text>
+    <text x="1392" y="1008" text-anchor="end" font-size="18" font-weight="700" fill="#47627b">PHI MEDIA LAB</text>
+  </g>
+</svg>
