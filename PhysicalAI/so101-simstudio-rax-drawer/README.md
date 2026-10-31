@@ -2,11 +2,13 @@
 
 > RAX Drawer Place: Non-Privileged Agent Control on SO-101 SimStudio
 
-**语言 / Language:** [中文](#中文) · [English](#english) · ⏱️ ~4 min read
+**语言 / Language:** [中文](#中文) · [English](#english) · ⏱️ ~5 min read
 
 > 📖 想看工具 API、RGB-D 感知、失败复盘与复现命令？ → [**技术详解版 / Deep-dive**](README-details.md)
 
 > 系列上文：[SO-101 SimStudio 项目介绍](../so101-simstudio/README.md) · [Lab 01 抓取放置](../so101-simstudio-lab01-pnp/README.md) · [站上英文版 Lab 01](https://rocpai-forge.github.io/en/posts/so101-simstudio-lab01/)
+
+> 论文 / Paper：[RAX — *Scaling Online Exploration for Robot Agents*](https://arxiv.org/abs/2610.22496) ([project](https://robot-agent-exploration.com))
 
 ![Open → place → close with top RGB, top depth, and side view](assets/gifs/open_place_close_rgbd.gif)
 
@@ -14,25 +16,43 @@
 
 ## 中文
 
-### 从「能训策略」到「能写控制器」
+### 先认识 RAX：为何适合长程抽屉任务
 
-[第一篇](../so101-simstudio/README.md)解决 ROCm 上的遥操作与录制；[Lab 01](../so101-simstudio-lab01-pnp/README.md) 打通了示范 → ACT / SmolVLA → 闭环评估。
+[第一篇](../so101-simstudio/README.md)解决 ROCm 上的遥操作与录制；[Lab 01](../so101-simstudio-lab01-pnp/README.md) 打通了示范 → ACT / SmolVLA → 闭环评估。模仿学习很强，但**新本体 / 新长程技能**往往仍要先采一套 teleop 语料；策略也容易被示范分布锁死，难在线上自我改进。
 
-抽屉任务更长：**拉开下层抽屉 → 把绿色方块放进托盘 → 再关上**。没有现成 teleop 示范时，默认上 VLA 并不划算。本篇走另一条路——**RAX 风格**：编码 Agent 只通过工具 API 探索场景，把经验**编译成确定性控制器**，再在锁定测试集上评一次分。
+[**RAX**（Robot Agent eXploration）](https://arxiv.org/abs/2610.22496)换了一条轴：**缩放在线探索**。通用编码 Agent 通过机器人感知与控制 API 交互，**不依赖动作示范、手写原语或价值函数**；把成功决策编译成封装「感知—规划—控制」的可执行程序，并在探索中持续修订。论文在仿真与真机、多本体上系统展示：探索量上去，未见场景泛化随之提升；相对强基线平均约 **+37.4** 点，真机亦可零示范掌握铰接、高精度与长程移动操作等。
 
-实践定义里的 RAX 不是「再训一个大模型」，而是：
+相对 **teleop → 行为克隆**，这对 **开抽屉 → 放方块 → 关抽屉** 这类任务特别合适：
+
+| | Teleop + IL（如 Lab 01） | RAX 探索 + 编译程序 |
+| --- | --- | --- |
+| 前置成本 | 要采够成功示范 | 要探索预算与可调用 API |
+| 长程组合 | 示范难覆盖「开—放—关」全序列与恢复 | Agent 可分段试错再合成技能 |
+| 交付物 | 神经网络策略 | 可读、可改的 Python 控制器 |
+| 观测契约 | 常与训练相机布局绑定 | 论文强调 **度量深度** 等构建 3D；与真机 API 对齐 |
+
+本篇是 **理论落地的小案例**：在 SO-101 SimStudio 的 `labs/rax_drawer/`（已合入 [`main`](https://github.com/rocPAI-Forge/so101-simstudio)）上，按 RAX 精神跑通非特权工具面 → 编译 → freeze → **一次**锁定评测。
 
 ```
 explore（工具交互） → compile（Python 控制器） → freeze → locked test（一次）
 ```
 
-### 非特权观测：相机与深度，而不是抽屉关节
+### 非特权观测：相机、深度，而不是抽屉关节
 
-Agent / 控制器**不能**读柜子布局、抽屉关节、方块真值位姿或接触标志——那些只留给评估器。公开观测是关节状态、相机标定、**顶视 RGB + 深度**、侧视 / 腕部 RGB。把手与方块必须从顶视 RGB-D 感知出来。
+Agent / 控制器**不能**读柜子布局、抽屉关节、方块真值位姿或接触标志。公开观测是关节状态、相机标定、**顶视 RGB + 度量深度**、侧视 / 腕部 RGB。把手与方块必须从顶视 RGB-D 感知出来。
 
 ![RAX control and observation contract](assets/images/architecture-rax-flow.png)
 
 ![What the controller sees: top RGB, top depth, side RGB](assets/images/cameras-obs-roles.png)
+
+### 为何必须认真用深度（仿真与真机同一逻辑）
+
+单靠 RGB 可以认「绿方块 / 黑把手」，却难稳定给出 **世界系 XYZ**——柜子平移、偏航一变，像素尺度就漂。RAX 论文把 **metric depth + 标定** 当作一等公民：Agent 可抬升点云、拟合物体/铰接模型，再在几何上规划抓取与拉开。本 lab 的顶视深度（uint16 毫米 → 米后反投影）扮演同一角色：
+
+- **仿真**：MuJoCo 深度渲染提供干净的度量深度，用来验证「非特权 3D 感知 → 接触控制」管线，而不是偷看 `drawer_slide`。  
+- **真机**：RealSense / Gemini 一类深度相机是同一接口形状；噪声更大，但程序仍应对点云与标定负责——这正是 sim→real 可迁移的契约，而不是换一套特权关节读数。
+
+没有深度，开合尚可勉强靠启发式；**放置点相对把手沿拉开方向再进 5.5 cm** 这类几何约束几乎做不稳。
 
 ### 结果（锁定测试，证据）
 
@@ -59,28 +79,37 @@ Place 在 freeze 前：explore 0–23 为 18/24，held-out explore 24–43 为 1
 
 ```bash
 git clone --recursive https://github.com/rocPAI-Forge/so101-simstudio.git
-cd so101-simstudio
-# 使用含 labs/rax_drawer 的分支 / commit
+cd so101-simstudio   # labs/rax_drawer 已在 main
 make rocm-sync && source .venv-rocm/bin/activate
 
 ./labs/rax_drawer/rax_place/eval_locked.cmd
 # 方法说明：labs/rax_drawer/rax_place/RAX_METHOD.md
 ```
 
-- **代码：** [rocPAI-Forge/so101-simstudio](https://github.com/rocPAI-Forge/so101-simstudio) · lab：`labs/rax_drawer/`
+- **代码：** [rocPAI-Forge/so101-simstudio](https://github.com/rocPAI-Forge/so101-simstudio) · lab：[`labs/rax_drawer/`](https://github.com/rocPAI-Forge/so101-simstudio/tree/main/labs/rax_drawer)
+- **论文：** [arXiv:2610.22496](https://arxiv.org/abs/2610.22496)
 - **技术详解：** [README-details.md](README-details.md)
 
 ---
 
 ## English
 
-### From “can train a policy” to “can compile a controller”
+### Meet RAX first: why it fits long-horizon drawers
 
-The [intro post](../so101-simstudio/README.md) covered teleop and recording on ROCm; [Lab 01](../so101-simstudio-lab01-pnp/README.md) closed the imitation-learning loop (demos → ACT / SmolVLA → eval).
+The [intro post](../so101-simstudio/README.md) covered teleop and recording on ROCm; [Lab 01](../so101-simstudio-lab01-pnp/README.md) closed the imitation loop (demos → ACT / SmolVLA → eval). Imitation learning works well, yet a **new embodiment or long-horizon skill** still usually needs its own teleop corpus, and policies stay bounded by the demonstration distribution.
 
-The drawer task is longer: **open the lower drawer → place a green cube in the tray → close**. With no teleop demos for that horizon, jumping to a VLA is a poor default. This post takes another path — **RAX-style**: a coding agent explores only through a tool API, **compiles a deterministic controller**, freezes it, and scores **once** on a locked test set.
+[**RAX** (Robot Agent eXploration)](https://arxiv.org/abs/2610.22496) scales a different axis: **online exploration**. A general-purpose coding agent interacts through perception and control APIs — **without action demos, hand-engineered primitives, or value-function guidance** — and compiles successful decisions into executable programs that wrap the full perception–planning–control loop. Across embodiments in sim and on real robots, the paper shows generalization rising with exploration and roughly **+37.4** points on average over strong baselines, including zero-demo mastery of articulated, high-precision, and long-horizon mobile tasks.
 
-RAX here is not “train another foundation model.” It is:
+Versus **teleop → behavior cloning**, that fits **open → place cube → close** especially well:
+
+| | Teleop + IL (e.g. Lab 01) | RAX explore + compiled program |
+| --- | --- | --- |
+| Upfront cost | Enough successful demos | Exploration budget + callable APIs |
+| Long horizon | Hard to cover open–place–close + recovery | Agent can stage failures then compose skills |
+| Artifact | Neural policy | Readable, editable Python controller |
+| Sensing | Often tied to training camera layouts | Paper stresses **metric depth** for 3D; aligns with real APIs |
+
+This post is a **theory-meets-practice case study** on SO-101 SimStudio’s `labs/rax_drawer/` (now on [`main`](https://github.com/rocPAI-Forge/so101-simstudio)): non-privileged tools → compile → freeze → **one** locked eval.
 
 ```
 explore (tool use) → compile (Python controller) → freeze → locked test (once)
@@ -88,11 +117,20 @@ explore (tool use) → compile (Python controller) → freeze → locked test (o
 
 ### Non-privileged observations: cameras and depth, not the drawer joint
 
-The agent / controller must **not** read cabinet layout, the drawer joint, ground-truth cube pose, or contact flags — those stay in the evaluator. Public observations are joint state, calibration, **overhead RGB + depth**, and side / wrist RGB. The handle and cube must be perceived from top RGB-D.
+The agent / controller must **not** read cabinet layout, the drawer joint, ground-truth cube pose, or contact flags. Public observations are joint state, calibration, **overhead RGB + metric depth**, and side / wrist RGB. Handle and cube must come from top RGB-D.
 
 ![RAX control and observation contract](assets/images/architecture-rax-flow.png)
 
 ![What the controller sees: top RGB, top depth, side RGB](assets/images/cameras-obs-roles.png)
+
+### Why depth matters (same logic in sim and on real robots)
+
+RGB can label “green cube / dark handle,” but it does not stably give **world XYZ** when the cabinet shifts or yaws. RAX treats **metric depth + calibration** as first-class: agents lift point clouds, fit object / articulated models, and plan grasps and pulls in geometry. Our overhead depth (uint16 mm → meters, then unproject) plays that role:
+
+- **Simulation:** MuJoCo depth rendering supplies clean metric depth so we can validate a non-privileged 3D perception → contact-control pipeline — not by peeking at `drawer_slide`.  
+- **Real robots:** RealSense / Gemini-class depth shares the same interface shape; noise is higher, but the program still owns the cloud and calibration — that is the sim→real contract, not a privileged joint readout.
+
+Without depth, open/close can limp along on heuristics; geometric place offsets such as **5.5 cm behind the perceived handle along the pull axis** barely hold.
 
 ### Results (locked test, evidence)
 
@@ -119,13 +157,13 @@ Open/close generalization across cabinet shifts / yaws (overhead + side grid):
 
 ```bash
 git clone --recursive https://github.com/rocPAI-Forge/so101-simstudio.git
-cd so101-simstudio
-# use a branch / commit that includes labs/rax_drawer
+cd so101-simstudio   # labs/rax_drawer is on main
 make rocm-sync && source .venv-rocm/bin/activate
 
 ./labs/rax_drawer/rax_place/eval_locked.cmd
 # method write-up: labs/rax_drawer/rax_place/RAX_METHOD.md
 ```
 
-- **Code:** [rocPAI-Forge/so101-simstudio](https://github.com/rocPAI-Forge/so101-simstudio) · lab: `labs/rax_drawer/`
+- **Code:** [rocPAI-Forge/so101-simstudio](https://github.com/rocPAI-Forge/so101-simstudio) · lab: [`labs/rax_drawer/`](https://github.com/rocPAI-Forge/so101-simstudio/tree/main/labs/rax_drawer)
+- **Paper:** [arXiv:2610.22496](https://arxiv.org/abs/2610.22496)
 - **Deep-dive:** [README-details.md](README-details.md)
