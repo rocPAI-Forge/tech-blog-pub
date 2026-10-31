@@ -11,9 +11,11 @@
 > 系列上文：[项目介绍](../so101-simstudio/README-details.md) · [Lab 01 抓取放置](../so101-simstudio-lab01-pnp/README-details.md)  
 > 论文：[arXiv:2610.22496](https://arxiv.org/abs/2610.22496) · [project](https://robot-agent-exploration.com)
 
-![Open → place → close with top RGB, top depth, and side view](assets/gifs/open_place_close_rgbd.gif)
+> **配图编号（两版共用）：** 图1 全程录像 · 图2 观测契约 · 图3 可见观测 · 图4 评分协议 · 图5 阶段时间条 · 图6 多阶段分解 · 图7 六布局开合 · 图8 侧视开合（仅详解）
 
-*文首录像（锁定测试场景 1）：上排左俯视彩色、右俯视深度，下侧视。程序用彩色+深度找把手和方块；侧视主要给人看动作。 / Full-episode clip (locked test scene 1): overhead color | depth on top, side view below.*
+![图1 全程任务录像](assets/gifs/open_place_close_rgbd.gif)
+
+**图 1 / Fig. 1.** 锁定测试场景 1 的全程录像：上排左俯视彩色、右俯视深度，下排侧视。彩色认把手和绿方块，深度量距离并算三维位置，侧视方便看出机械臂姿态。（与精简版图号一致。）
 
 ---
 
@@ -54,7 +56,9 @@ Session(explore)   code/open_place_close/  CONTROLLER_FROZEN_N
 
 仿真可轻易读 `drawer_slide`、方块 body、接触数组；我们**不用**这些特权量，因为真机只有关节与相机/深度。非特权是为了与 real API 同构，给 **sim2real** 打基础，而不是在 sim 里走捷径。
 
-![RAX control and observation contract](assets/images/architecture-rax-flow.png)
+![图2 控制与观测契约](assets/images/architecture-rax-flow.png)
+
+**图 2 / Fig. 2.** 控制与观测契约：Agent 只经 Session 四工具与环境交互；公开观测含关节与相机/深度，特权量留在隐藏评估器。
 
 ### 2. 场景、成功判据与相机栈
 
@@ -69,7 +73,9 @@ Session(explore)   code/open_place_close/  CONTROLLER_FROZEN_N
 | `side` | 侧视 RGB；姿态交叉检查与录像 |
 | `wrist` | 腕部 RGB；API 提供；本 place 控制器主要用顶视 RGB-D + 关节 FK |
 
-![What the controller sees](assets/images/cameras-obs-roles.png)
+![图3 控制器可见观测](assets/images/cameras-obs-roles.png)
+
+**图 3 / Fig. 3.** 控制器可见的非特权观测：俯视彩色、俯视深度、侧视彩色。
 
 ### 2.1 深度相机：为何是一等公民（仿真与真机）
 
@@ -82,7 +88,7 @@ RAX 论文明确：相对「只吃 RGB 的通才策略」，Agent 应能用 **me
 3. **真机迁移**：真实深度噪声、孔洞、反光更多，但程序仍应对「云 + 内参/外参」负责；真机可加接触探询等补偿（论文亦观察到力/接触补深度误差）。Sim 先把非特权几何管线跑通，再换传感器实现。  
 4. **没有深度会怎样**：颜色分割仍可找绿块，但 **放置点 = 把手沿 pull 再进 5.5 cm**、拉开行程度量、关屉对准都失去稳定尺度；仅 RGB 的像素启发式在布局一变就碎。
 
-所以上面「控制器看到什么」那张图，以及文首那段**全程任务录像**，才会把画面拼成三块：**俯视彩色 | 俯视深度 | 侧视彩色**。彩色用来认把手和绿方块；深度用来量远近、算三维位置；侧视方便人眼看清机械臂姿态。深度图不是好看的配图，而是程序算抓取/放置点时真正用到的输入。
+所以 **图 1**（全程录像）和 **图 3**（观测拆解）才会把画面拼成三块：**俯视彩色 | 俯视深度 | 侧视彩色**。彩色用来认把手和绿方块；深度用来量远近、算三维位置；侧视方便人眼看清机械臂姿态。深度不是好看的配图，而是程序算抓取/放置点时真正用到的输入。
 
 ### 3. 模块地图
 
@@ -113,9 +119,11 @@ code/open_place_close/
   controller.py   # open_drawer → pick_and_place → close_drawer
 ```
 
-入口把长程拆成三个函数（见 [`assets/code/controller_stages_snippet.py`](assets/code/controller_stages_snippet.py)），再细分为 A–F：
+入口把长程拆成三个函数（见 [`assets/code/controller_stages_snippet.py`](assets/code/controller_stages_snippet.py)），再细分为 A–F（见图 6）：
 
-![Stage decomposition A–F](assets/images/stage-decomposition.png)
+![图6 多阶段分解](assets/images/stage-decomposition.png)
+
+**图 6 / Fig. 6.** 编译技能的多阶段分解（A–F）；开屉记下的 `pull` / `grasp_xy` 交给关屉复用。
 
 **为何要拆阶段：** 开屉要接触柔顺（速度域），抓放要厘米级到位（位置域 IK），关屉要在托盘被占用后仍对准把手。混在一个大循环里难调试；RAX 风格是先在 explore 上把子技能跑通，再在 `main` 里组合，阶段之间只传递 **`pull` / `grasp_xy` / 开后把手点`**——评估器里的抽屉关节始终不可见。
 
@@ -169,11 +177,17 @@ code/open_place_close/
 
 同一 `Session.step`；环境按 key 名分流。这与 RAX「程序里显式写感知—规划—控制」一致：模式切换是可读的工程决策，不是隐式策略网络。
 
-![Phase strip](assets/images/phase-strip-place.png)
+![图5 阶段时间条](assets/images/phase-strip-place.png)
 
-![Open and close side view](assets/gifs/open_close.gif)
+**图 5 / Fig. 5.** 成功轨迹时间切片：reset → open → pick → place → close。
 
-![Open/close grid](assets/gifs/open_close_grid_en.gif)
+![图8 侧视开合样例](assets/gifs/open_close.gif)
+
+**图 8 / Fig. 8.** 仅开合任务的侧视样例（explore scene 0）；详解版增补，精简版未单列。
+
+![图7 六布局开合](assets/gifs/open_close_grid_en.gif)
+
+**图 7 / Fig. 7.** 同一开合程序在六种柜子布局下的表现。
 
 ### 5. 分数轨迹与失败复盘
 
@@ -183,9 +197,11 @@ code/open_place_close/
 | Round 2 | fold-then-pick（explore 4/12） | **3 / 20** |
 | Round 3 | 放置 5.5 cm；腕锁关；explore 自检见下 | **15 / 20** |
 
-**分数怎么读：** 开发只改 explore 清单上的程序；`test.json` 的 20 个布局冻结后只评一次，**禁止**用锁定失败再调参。Round 3 冻结前的 explore 自检：前 24 景 **18/24**；另 20 个未参与当轮调试的 explore 景 **13/20**（只判断「能否冻结」）。对外报告的是锁定 **15/20**。
+**分数怎么读：** 开发只改 explore 清单上的程序；`test.json` 的 20 个布局冻结后只评一次，**禁止**用锁定失败再调参。Round 3 冻结前的 explore 自检：前 24 景 **18/24**；另 20 个未参与当轮调试的 explore 景 **13/20**（只判断「能否冻结」）。对外报告的是锁定 **15/20**（见图 4）。
 
-![Explore → freeze → locked test](assets/images/explore-freeze-test.png)
+![图4 评分协议](assets/images/explore-freeze-test.png)
+
+**图 4 / Fig. 4.** explore → freeze → 锁定 test 只评一次；18/24、13/20 是冻结前自检，15/20 是对外成绩。
 
 常见失败：搬运推关抽屉；放置压把手；关屉错抓；个别布局不可达。非 RAX 的 `place_close` 对照约 **6/20**。勿把旧 `place_close.py` import 进会话控制器。
 
@@ -250,9 +266,11 @@ Cursor filled the coding-agent role via `tools.Session` when the official harnes
 ① Explore → ② Compile → ③ Freeze → Locked test (once)
 ```
 
-Tool-only control; explore ≠ test; deliver a program. We refuse sim privileges (`drawer_slide`, GT poses, contacts) so the pipeline matches a real robot API and supports **sim2real**. Architecture figure: see Chinese §1.
+Tool-only control; explore ≠ test; deliver a program. We refuse sim privileges (`drawer_slide`, GT poses, contacts) so the pipeline matches a real robot API and supports **sim2real**. See **Fig. 2**.
 
-![RAX control and observation contract](assets/images/architecture-rax-flow.png)
+![Fig. 2 control and observation contract](assets/images/architecture-rax-flow.png)
+
+**Fig. 2** (same as 图 2). Control and observation contract.
 
 ### 2. Scene, success, camera stack
 
@@ -264,7 +282,9 @@ Tool-only control; explore ≠ test; deliver a program. We refuse sim privileges
 | `side` | Side RGB; posture cross-check / footage |
 | `wrist` | Gripper RGB; API-available; place path leans on top RGB-D + FK |
 
-![What the controller sees](assets/images/cameras-obs-roles.png)
+![Fig. 3 controller observations](assets/images/cameras-obs-roles.png)
+
+**Fig. 3** (same as 图 3). Non-privileged views available to the controller.
 
 ### 2.1 Depth as a first-class citizen (sim and real)
 
@@ -275,7 +295,7 @@ RAX argues agents should lift **metric depth** (and force) into point clouds and
 3. **Real:** Noisier depth, same program ownership of cloud + extrinsics; contact probing can patch depth error (also noted in RAX).  
 4. **Without depth:** color still finds the cube, but place offsets (**5.5 cm behind the handle along pull**), open stroke, and close alignment lose stable metric scale.
 
-That is why the “what the controller sees” panel above, and the **full-episode clip at the top of this page**, are laid out as **overhead color | overhead depth | side color**. Color finds the handle and green cube; depth measures distance for 3D place/grasp; the side view helps humans read arm posture. The depth pane is an actual control input, not a pretty extra.
+That is why **Fig. 1** (full-episode clip) and **Fig. 3** (observation breakdown) lay out **overhead color | overhead depth | side color**. Color finds the handle and green cube; depth measures distance for 3D place/grasp; the side view helps humans read arm posture. Depth is a control input, not decoration.
 
 ### 3. Module map
 
@@ -287,9 +307,11 @@ RAX delivers a **compiled program**, not a one-off chat trace. The agent (here C
 
 `perceive.py` · `motion.py` · `kinematics.py` · `ik.py` · `controller.py`
 
-`main(ctx)` chains `open_drawer` → `pick_and_place` → `close_drawer`, refined as stages **A–F**. Stages hand off **`pull` / `grasp_xy` / opened handle point`** — never the drawer joint.
+`main(ctx)` chains `open_drawer` → `pick_and_place` → `close_drawer`, refined as stages **A–F** (see **Fig. 6**). Stages hand off **`pull` / `grasp_xy` / opened handle point`** — never the drawer joint.
 
-![Stage decomposition A–F](assets/images/stage-decomposition.png)
+![Fig. 6 stage decomposition](assets/images/stage-decomposition.png)
+
+**Fig. 6** (same as 图 6). Multi-stage skill A–F.
 
 **A–B Open (velocity):** RGB-D lower handle; approach / squeeze / pull along `pull`; confirm by re-perceiving handle or pinch motion; record geometry; clear aside.
 
@@ -305,17 +327,25 @@ Velocity keys (`vx`/`vy`/…) vs position keys (`*.pos`) share one `Session.step
 
 Entry sketch: [`assets/code/controller_stages_snippet.py`](assets/code/controller_stages_snippet.py). Full Chinese narrative: §4 above.
 
-![Phase strip](assets/images/phase-strip-place.png)
+![Fig. 5 phase strip](assets/images/phase-strip-place.png)
 
-![Open and close side view](assets/gifs/open_close.gif)
+**Fig. 5** (same as 图 5). Time strip of one successful episode.
 
-![Open/close grid](assets/gifs/open_close_grid_en.gif)
+![Fig. 8 side open/close](assets/gifs/open_close.gif)
+
+**Fig. 8** (same as 图 8). Side-view open/close sample (details-only extra).
+
+![Fig. 7 open/close grid](assets/gifs/open_close_grid_en.gif)
+
+**Fig. 7** (same as 图 7). Open/close across six cabinet layouts.
 
 ### 5. Score path and failures
 
-Locked **15/20** after rounds 4/20 → 3/20 → 15/20. Pre-freeze explore self-checks (18/24 and 13/20) only decide readiness to freeze; the locked score was not used for retuning.
+Locked **15/20** after rounds 4/20 → 3/20 → 15/20. Pre-freeze explore self-checks (18/24 and 13/20) only decide readiness to freeze; the locked score was not used for retuning (see **Fig. 4**).
 
-![Explore → freeze → locked test](assets/images/explore-freeze-test.png)
+![Fig. 4 scoring protocol](assets/images/explore-freeze-test.png)
+
+**Fig. 4** (same as 图 4). Explore → freeze → one locked test.
 
 Failure modes: carrying shuts the drawer; drop onto the handle; miss on close; unreachable layouts. Non-RAX `place_close` ≈ 6/20 on the same locked set.
 
