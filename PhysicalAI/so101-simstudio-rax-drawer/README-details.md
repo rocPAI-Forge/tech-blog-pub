@@ -2,212 +2,209 @@
 
 > RAX Drawer Place: Non-Privileged Agent Control on SO-101 SimStudio
 
-**语言 / Language:** [中文](#中文) · [English](#english) · 📄 技术详解版 / Deep-dive
+**语言 / Language:** [中文](#中文) · [English](#english) · 📄 技术详解版
 
-> ⚡ 只想 3 分钟故事线与锁定分数？ → [**精简版 / Concise digest**](README.md)（仅图 1、2、6）
+> ⚡ 只想快速看故事和分数？ → [**精简版**](README.md)（只有图 1、2、6）
 
-> TL;DR：借鉴 [RAX](https://arxiv.org/abs/2610.22496) 的论点与方法，在 [SO-101 SimStudio](https://github.com/rocPAI-Forge/so101-simstudio) **`main`** 的 `labs/rax_drawer/` 上做 **部分实践 / 工作流切片**（非复现论文多本体缩放结论）。本详解版展开：观测与深度、模块地图、A–F 控制代码、分数协议与失败复盘、复现命令。锁定：**开合 16/20**，**place 15/20**（freeze 3）。上游方法笔记：[RAX_METHOD.md](https://github.com/rocPAI-Forge/so101-simstudio/blob/main/labs/rax_drawer/rax_place/RAX_METHOD.md)。
+> **这篇详解写什么：** 我们**借鉴了 RAX 的哪些想法**、在仿真里**具体怎么做**、为了柜子挪一点还能用**改了哪些细节**、分数怎么算、怎么自己复现。  
+> **这篇不写什么：** 不宣称我们重新证明了 RAX 论文里大规模、多机器人的那些数字。
 
-> 系列上文：[项目介绍](../so101-simstudio/README-details.md) · [Lab 01 抓取放置](../so101-simstudio-lab01-pnp/README-details.md)  
-> 论文：[arXiv:2610.22496](https://arxiv.org/abs/2610.22496) · [project](https://robot-agent-exploration.com)
+> 系列：[项目介绍](../so101-simstudio/README-details.md) · [Lab 01](../so101-simstudio-lab01-pnp/README-details.md) · 论文：[arXiv:2610.22496](https://arxiv.org/abs/2610.22496)
 
-> **配图：** 图1 全程录像 · 图2 观测契约 · 图3 可见观测 · 图4 评分协议 · 图5 阶段时间条 · 图6 多阶段分解 · 图7 六布局开合 · 图8 侧视开合
+> **配图：** 图1 全程录像 · 图2 谁能看什么 · 图3 相机画面 · 图4 怎么打分 · 图5 时间切片 · 图6 分几步做 · 图7 六种柜子摆法 · 图8 侧面开合
 
 ![图1 全程任务录像](assets/gifs/open_place_close_rgbd.gif)
 
-**图 1 / Fig. 1.** 锁定测试场景 1 的全程录像：上排左俯视彩色、右俯视深度，下排侧视。彩色认把手和绿方块，深度量距离并算三维位置，侧视方便看出机械臂姿态。（与精简版图号一致。）
+**图 1.** 保密测试里第 1 个场景的完整录像。上排：左彩色、右深度；下排：侧面。彩色认东西，深度量远近。
 
 ---
 
 ## 中文
 
-### 0. 我们借鉴了什么、实践了什么（诚实边界）
+### 0. 先把话说清楚：我们借鉴了什么
 
-机器人学习近年靠**缩放示范数据与模型容量**（VLA / WAM 等）进展很大，但换一个本体或任务，通常仍要重新采 teleop；学到的策略也被示范分布束缚。Huang 等人提出的 **RAX（Robot Agent eXploration）** 把主轴换成 **缩放在线探索**：编码 Agent 经感知与控制 API 试任务，把成功决策**编译**成可执行程序，并维护笔记/技能记忆。论文在多本体、仿真与真机上给出了探索规模与泛化、相对基线约 **+37.4** 等系统结果。
+这两年机器人学习很火的一条路是：多采人的示范、把模型做大（各种 VLA）。可一换手臂或换任务，往往又要重新采数据；学出来的策略也容易只会「示范里见过的样子」。
 
-**本篇不声称：** 复现或验证上述论文级结论；也没有做探索预算扫描、多本体对照或官方 RAX harness 全自动发现。
+[RAX 论文](https://arxiv.org/abs/2610.22496)换了个思路：让**会写代码的 Agent**直接对着机器人接口去试，把试成功的做法**写成程序**留下，而不是先堆示范再训练。论文在很多机器人和真机上做了系统实验，也报了相对基线大约 +37.4 分这类结果。
 
-**本篇确实借鉴并部分实践的：**
+**我们这篇不打算复现那些大实验。** 没有官方 RAX 全套工具链时，是用 **Cursor + 自写的 Session 接口** 在 SO-101 仿真里做了一小段：**开抽屉 → 放绿方块 → 关上**。人也会改代码，所以这是「人机一起写程序」的实践，不是论文级「纯 Agent 从零发现」的复刻。
 
-1. **非特权 API 契约**——控制不用仿真抽屉关节/真值位姿；公开观测含关节、标定、RGB 与**度量深度**（贴合真机、利于 sim2real 形状对齐）。  
-2. **explore → 编译程序 → freeze → held-out 锁定评**——开发与正式分数分离。  
-3. **长程铰接任务拆成可读子技能**——开 / 放 / 关写成 `controller.py`，而不是一条隐式策略。  
-4. **相对 teleop+IL 的动机**：本任务无抽屉示范时，先走 RAX 式工作流往往比硬套 Lab 01 VLA 更务实。
+我们真正学过来、并落到代码里的，主要是这几条：
 
-官方 Claude Code / RAX harness 凭证不可用时，由 **Cursor + `tools.Session`** 扮演编码 Agent（人机协作痕迹存在；主机上曾有 `place_close.py`，会话控制器不得 import，但仍有污染风险）。工具面与 `RaxDrawerBackend` 的 `drawer_*` 对齐，便于日后接到真实 RAX service。Lab 已合入上游 **`main`**（PR #21）。
+1. **控制时别偷看仿真特权**——不能读「抽屉滑了几厘米、方块真实坐标」；只能看关节、相机、深度（和真机更像，也方便以后换真相机）。  
+2. **先练习、再冻结、再保密考试**——开发用一批场景，正式分数用另一批，考完不能再为了分数改程序。  
+3. **长动作拆成几段可读代码**——开、抓、放、关写清楚，而不是一个黑盒网络。  
+4. **这个任务没有现成遥操作示范**——硬套 Lab 01 的 VLA 不合适，先走「试 → 写成程序」更务实。
 
-与 Lab 01（teleop → BC）对照——**同一平台，两条学习轴；本轴是 RAX 工作流切片，不是论文翻版**：
+Lab 已合进 so101-simstudio 的 **`main`**。
 
-| | Lab 01 PnP | 本篇（借鉴 RAX 的切片） |
+和 Lab 01 对比（同一仓库，两条路）：
+
+| | Lab 01 | 这篇 |
 | --- | --- | --- |
-| 数据 | 遥操作示范 | 无该任务示范；explore 迭代 |
-| 产出 | 神经网络策略 | 编译后的 Python 程序 |
-| 观测 | 相机 + 状态（训练标签含动作） | 工具 API；无布局 / 抽屉关节 / 真值位姿 |
-| 评测 | 50 集 spawn 协议 | explore 开发 + **一次** locked 20 场景 |
-| 代表分数 | ACT 32/50 等 | place **15/20**；开合 **16/20**（自身协议，非论文基线表） |
+| 数据从哪来 | 人遥操作示范 | 没有该任务示范；在练习场景里试 |
+| 最后留下什么 | 神经网络策略 | 一段 Python 控制程序 |
+| 控制时能看什么 | 相机 + 状态（训练时还有动作标签） | 工具接口；看不到柜子布局/抽屉关节真值 |
+| 怎么打分 | 约定好的 spawn 评测 | 练习场景开发 + **一次**保密 20 场景 |
+| 报告的数 | 如 ACT 32/50 | 开合 16/20；开放关 15/20（按我们自己的规矩，不是论文那张表） |
 
-### 1. 实践中的 RAX 循环
+### 1. 实际怎么跑这一圈
 
 ```
-① Explore          ② Compile              ③ Freeze → Locked test
-Session(explore)   code/open_place_close/  CONTROLLER_FROZEN_N
-短步工具交互        main(ctx) 确定性程序     仅一次跑 manifests/test.json
+① 在练习场景里试几次
+② 把靠谱做法写成程序（compile）
+③ 冻结：不再为测试分改代码
+④ 在保密场景上只跑一轮打分
 ```
 
-原则：只许 `reset` / `observe` / `step` / `check_success`；explore ≠ test；Freeze 后再计锁定分；交付物是程序。
+能动胳膊的接口只有四个：`reset`（重置）、`observe`（看）、`step`（动一下）、`check_success`（问成没成功）。
 
-仿真可轻易读 `drawer_slide`、方块 body、接触数组；我们**不用**这些特权量，因为真机只有关节与相机/深度。非特权是为了与 real API 同构，给 **sim2real** 打基础，而不是在 sim 里走捷径。
+仿真里其实很容易作弊：直接读抽屉关节、方块坐标。我们**故意不用**。真机上也没有这些「上帝视角」，只有电机角度和相机。仿真里坚持同一套规则，是为了以后换真机时接口还能对得上，而不是在仿真里走捷径。
 
 ![图2 控制与观测契约](assets/images/architecture-rax-flow.png)
 
-**图 2 / Fig. 2.** 控制与观测契约：Agent 只经 Session 四工具与环境交互；公开观测含关节与相机/深度，特权量留在隐藏评估器。
+**图 2.** 谁能看什么：写程序的一边只能通过工具拿公开观测；打分用的抽屉真值等藏在评估器里。
 
-### 2. 场景、成功判据与相机栈
+### 2. 场景长什么样、怎样算成功
 
-场景：`SO101/scenes/smart_drawer/scene.xml`，下层抽屉约 0–0.08 m，桌上绿方块。
+场景是带下层抽屉的柜子，桌上有一块绿方块。抽屉大概能拉出 0～8 厘米。
 
-**开合成功**：拉开时把手接触；相对本集基线至少多开 **6 cm**；推回再接触，回到基线 **5 mm** 内。  
-**Place 成功**：上述 + 方块在托盘 AABB（评估器；控制器不可用该字段控制）。
+**只开合：** 拉开时要碰到把手；比这一局开始时至少多拉开约 **6 厘米**；推回去时再碰到把手，并回到开始位置附近（约 **5 毫米**以内）。  
+**开+放+关：** 上面都要满足，并且方块最后躺在抽屉托盘里（这个由打分程序判断；控制程序读不到「方块是否已在屉里」当作弊信号）。
 
-| 相机 | 角色 |
+| 相机 | 干什么用 |
 | --- | --- |
-| `top` | 俯视 RGB + **度量深度**（类 Gemini 336L）；把手/方块 3D 感知主源 |
-| `side` | 侧视 RGB；姿态交叉检查与录像 |
-| `wrist` | 腕部 RGB；API 提供；本 place 控制器主要用顶视 RGB-D + 关节 FK |
+| 俯视 `top` | 彩色 + **能测距离的深度**；找把手和绿方块主要靠它 |
+| 侧面 `side` | 彩色；方便人看姿势，也用于录像 |
+| 腕部 `wrist` | 夹爪附近的画面；接口有，但本程序主要靠俯视 + 关节推算 |
 
 ![图3 控制器可见观测](assets/images/cameras-obs-roles.png)
 
-**图 3 / Fig. 3.** 控制器可见的非特权观测：俯视彩色、俯视深度、侧视彩色。
+**图 3.** 控制时能看到的画面：俯视彩色、俯视深度、侧面彩色。
 
-### 2.1 深度相机：为何是一等公民（仿真与真机）
+#### 2.1 为什么要认真对待深度
 
-RAX 论文明确：相对「只吃 RGB 的通才策略」，Agent 应能用 **metric depth**（及力）抬升点云、拟合物体甚至铰接模型，再在几何上搜动作。空气炸锅开屉放香蕉等真机例子，核心就是 RGB-D → 3D 模型 → 沿棱柱关节规划拉开。
+光看彩色照片，能认出「那是绿方块、那是黑把手」，但柜子往旁边挪一点、转一点，像素大小就变了，很难稳定知道「在真实空间里离我多远」。
 
-本 lab 把同一思想压成可教学的最小闭环：
+RAX 论文也强调：Agent 应该能用**带真实尺度的深度**把画面变成三维点，再规划抓和拉。我们在仿真里做了同一件事的缩小版：
 
-1. **数据形态**：`observe()` 返回 `depth_images["top"]`，**uint16 毫米**；感知转为米，配合标定反投影到世界系。  
-2. **仿真价值**：MuJoCo `enable_depth_rendering` 给出近似理想深度——用来证明**算法与 API 契约**，而不是用 `drawer_slide` 作弊。柜子随机平移 / 偏航时，深度让「把手线 + 拉开法向」可估计。  
-3. **真机迁移**：真实深度噪声、孔洞、反光更多，但程序仍应对「云 + 内参/外参」负责；真机可加接触探询等补偿（论文亦观察到力/接触补深度误差）。Sim 先把非特权几何管线跑通，再换传感器实现。  
-4. **没有深度会怎样**：颜色分割仍可找绿块，但 **放置点 = 把手沿 pull 再进 5.5 cm**、拉开行程度量、关屉对准都失去稳定尺度；仅 RGB 的像素启发式在布局一变就碎。
+1. 深度图按**毫米**存，程序先换成米，再用相机标定算到空间坐标。  
+2. 仿真深度比较干净，用来验证「不偷看抽屉关节，只靠看也能干活」。  
+3. 真机深度会更吵、有空洞，但程序仍然应该对自己算出来的点云负责——接口形状先对齐，以后再换 RealSense / Gemini 一类相机。  
+4. 没有深度时，还能靠颜色碰运气找绿块；但「在把手后面再往里放 5.5 厘米」这种要靠真实距离的动作，就很难稳。
 
-所以 **图 1**（全程录像）和 **图 3**（观测拆解）才会把画面拼成三块：**俯视彩色 | 俯视深度 | 侧视彩色**。彩色用来认把手和绿方块；深度用来量远近、算三维位置；侧视方便人眼看清机械臂姿态。深度不是好看的配图，而是程序算抓取/放置点时真正用到的输入。
+所以 **图 1** 和 **图 3** 才会把深度和彩色并排放：深度不是好看的滤镜，而是算抓取、放置位置时真用到的数。
 
-### 3. 模块地图
+### 3. 代码大致放在哪
 
 ```
-labs/rax_drawer/          # 已在 so101-simstudio main
-  environment.py          RaxDrawerEnv：步进、深度渲染、成功判定
-  backend.py              RaxDrawerBackend：RAX 服务形态 + PNG 打包
-  open_close.py           非特权仅开合（报告 16/20）
-  place_close.py          早期直连 env 变体（非报告程序）
-  manifests/{explore,test}.json
+labs/rax_drawer/
+  environment.py     仿真环境、深度、打分
+  backend.py         对接「机器人服务」形态
+  open_close.py      只开合（成绩 16/20）
+  manifests/         练习场景 / 保密测试场景列表
   rax_place/
-    tools.py              Session：剥特权字段、审计
-    code/open_place_close/  编译控制器（报告 15/20）
-    RAX_METHOD.md  PROCESS.md  PROTOCOL.md
-    eval_locked.cmd
+    tools.py         Session：挡住特权信息
+    code/open_place_close/   开→放→关的正式程序（15/20）
+    eval_locked.cmd  一键跑保密测试
 ```
 
-### 4. 多阶段分解与控制代码（freeze 3）
+### 4. 长任务怎么拆成几步（冻结第 3 版）
 
-RAX 的交付物不是「一次 chat 里点几下」，而是把探索中验证过的决策**编译**成可复用程序。对本任务，Agent（本实践中为 Cursor + `Session`）最终落成：
-
-```
-code/open_place_close/
-  perceive.py     # 顶视 RGB-D → 把手 / 方块
-  motion.py       # 速度域：approach_xy / move_xy / slide
-  kinematics.py   # 关节观测 → EE（FK）
-  ik.py           # 阻尼雅可比 servo_to（关节 *.pos）
-  controller.py   # open_drawer → pick_and_place → close_drawer
-```
-
-入口把长程拆成三个函数（见 [`assets/code/controller_stages_snippet.py`](assets/code/controller_stages_snippet.py)），再细分为 A–F（见图 6）：
+探索阶段试出来的做法，最后收成几个文件：感知、速度移动、正运动学、用雅可比做位置伺服、以及总控 `controller.py`。入口大致是：先开抽屉，再抓放，再关上（见 [`controller_stages_snippet.py`](assets/code/controller_stages_snippet.py)）。
 
 ![图6 多阶段分解](assets/images/stage-decomposition.png)
 
-**图 6 / Fig. 6.** 编译技能的多阶段分解（A–F）；开屉记下的 `pull` / `grasp_xy` 交给关屉复用。
+**图 6.** 步骤 A～F。开抽屉时记下「往哪拉」和「手抓在哪」，关的时候还用这两样——始终不读抽屉关节。
 
-**为何要拆阶段：** 开屉要接触柔顺（速度域），抓放要厘米级到位（位置域 IK），关屉要在托盘被占用后仍对准把手。混在一个大循环里难调试；RAX 风格是先在 explore 上把子技能跑通，再在 `main` 里组合，阶段之间只传递 **`pull` / `grasp_xy` / 开后把手点`**——评估器里的抽屉关节始终不可见。
+为什么要拆开写？开抽屉要软接触（用速度更好调），抓放要厘米级准（用关节位置伺服更好调），关抽屉时托盘里已经有东西、姿势也乱了。拆开以后，练习场景里可以一段一段修；总控里只传递「拉开方向、抓点」这类几何量。
 
-#### 4.1 感知公共件（`perceive.py`）
+#### 4.1 怎么「看见」把手和方块
 
-- 深度 mm→m，用 `top` 标定反投影有效像素 → 世界点云。  
-- **下层把手**：ROI 内暗色横杆拟合直线，水平法向取朝向固定臂座的 `pull`（单位向量）。  
-- **绿方块**：颜色掩码 + 点云质心。  
-失败则 `RuntimeError`，该 episode 放弃——不回退读 MuJoCo geom。
+俯视彩色 + 深度 → 算出一堆空间点。暗色横杆拟合出下层把手，并估计水平拉开方向；绿色区域找出方块中心。找不到就本局失败——不会偷偷去读仿真物体 ID。
 
-#### 4.2 A–B：`open_drawer`（速度域）
+#### 4.2 开抽屉（偏速度控制）
 
-1. `observe(cameras=True)` → `find_lower_handle`。  
-2. `slide` / `wrist_flex` 俯身；`approach_xy` 到把手前 `GRASP_CLEARANCE_M`（约 1.2 cm），夹紧后再小拉。  
-3. **确认抓住**：再次感知把手是否沿 `pull` 移动 ≥1 cm，或夹爪捏点移动 ≥1 cm（把手看不见时的后备）。失败则松爪后退换 clearance 重试。  
-4. 沿 `pull` 再拉到约 `PULL_DISTANCE_M=0.075`（成功门槛 ≥6 cm）。  
-5. 松爪；返回 `{"point", "pull", "grasp_xy"}` 给后续阶段。  
-**B 清空**：`pick_and_place` 开头再沿 `pull` 滑开一段，避免夹爪挡顶视。
+靠近把手 → 夹紧 → 顺着拉开方向拉；再看一眼把手（或夹爪）是不是真的动了，确认抓住。大约再拉到 7.5 厘米量级（成功要求至少多开 6 厘米）。松手后往旁边让一点，别挡着俯视看方块。
 
-#### 4.3 C–E：`pick_and_place`（位置域为主）
+#### 4.3 抓起来再放进去（偏位置控制）
 
-**C fold-then-face（关键）**  
-开完后若直接 `go_home`，关节插值会横扫开着的托盘把它顶回去。`_ready_for_pick` 改为两段关节种子：先收臂上折，再 yaw 朝前——托盘保持打开。这是 explore 里用失败反推写进代码的典型 RAX 修订。
+**收臂再转正（很重要）：** 开完抽屉如果直接「回默认姿势」，胳膊扫过去常会把开着的抽屉顶回去。改成先收起来、再转到面对方块，托盘才不容易被关掉。这是练习时翻车后改出来的。
 
-**D 抓取**  
-1. 再感知方块；`servo_to` 走若干路点落到 `GRASP_Z`。  
-2. `servo_to`（`ik.py`）：用机器人模型雅可比，在观测关节上迭代，经 `shoulder_pan.pos` … 等 **位置动作** 下发（`duration_s≈1/30`）。  
-3. 夹紧后读 `gripper.position_rad`：若 ≤ −0.05 视为空抓失败。  
-4. 抬到 `LIFT_Z`；可选再看方块高度确认「在手里」。
+然后用关节位置一点点伺服到方块上方、夹紧；夹爪角度太「空」就当没抓住。抬起来后，在**当前看到的把手位置**沿拉开方向**再往里 5.5 厘米**放下——落在托盘里，而不是压在把手横杆上。搬运过程中保持位置控制；中途改回速度曾经把方块抖掉。
 
-**E 放置**  
-1. 再估把手（失败则用开屉记录的 `point`）。  
-2. `place_xy = handle_xy - pull * PLACE_BEHIND_M`（**0.055 m**）——落在托盘内，而不是压在横杆上（压杆会关屉或掉外面）。  
-3. 先抬高再平移再落到 `PLACE_Z`；**全程保持位置域**（中途切回速度曾抖掉方块）。打开夹爪。
+#### 4.4 再关上
 
-#### 4.4 F：`close_drawer`（腕锁伺服）
+放完后手腕姿势往往已经歪了。先退到抽屉靠机器人一侧，俯一下腕并**锁住这个腕角**，再对准开抽屉时记下的位置推回去，最后短推一下，问打分程序成没成功。
 
-放完后腕部姿态常已偏离开屉时的俯身角；纯速度爬升容易「摸空」。程序：
+#### 4.5 两种「动手方式」
 
-1. 抬高并沿 `pull` 退到托盘机器人一侧。  
-2. 一次 `wrist_flex_rate` 俯身，**锁住**此时腕关节角。  
-3. 在 `lock_wrist=True` 下 `servo_to` 对准开后把手附近 → 夹紧 → 再伺服到开屉记录的 `grasp_xy`，必要时 `move_xy` 挤握收尾。  
-4. 短速度推一下；`check_success` 看回位 + 方块在屉内。
-
-#### 4.5 双动作模式小结
-
-| 模式 | 工具动作 | 用在 |
+| 方式 | 大概在说什么 | 用在哪 |
 | --- | --- | --- |
-| 速度 | `vx/vy/vz`, `wrist_flex_rate`, `gripper_delta` | 开屉接触、清空、关屉末推 |
-| 位置 | `*.pos`（经 `servo_to` / `_send`） | 收臂、抓取、搬运、腕锁关屉 |
+| 速度 | 往哪边滑、腕转多快、夹爪开合快慢 | 开抽屉、让开、关抽屉末一下 |
+| 位置 | 每个关节转到多少度 | 收臂、抓、搬运、腕锁着关 |
 
-同一 `Session.step`；环境按 key 名分流。这与 RAX「程序里显式写感知—规划—控制」一致：模式切换是可读的工程决策，不是隐式策略网络。
+都走同一个 `step` 接口，只是动作字段不一样。这样写清楚，以后改某一段不会整锅糊。
 
 ![图5 阶段时间条](assets/images/phase-strip-place.png)
 
-**图 5 / Fig. 5.** 成功轨迹时间切片：reset → open → pick → place → close。
+**图 5.** 同一成功局里，从开始到结束的几张「快照」。
 
-![图8 侧视开合样例](assets/gifs/open_close.gif)
+![图8 侧视开合](assets/gifs/open_close.gif)
 
-**图 8 / Fig. 8.** 仅开合任务的侧视样例（explore scene 0）；详解版增补，精简版未单列。
+**图 8.** 只开合时的侧面样子（练习场景 0）。
+
+### 4.6 为了「柜子挪一点还能用」，我们改了什么
+
+这里说的泛化，主要指：**柜子平移几厘米、转几度，同一套程序还能干活**。不是换灯光、换贴图，也还没上真机。
+
+**规矩上：**
+
+- 练习场景和保密测试场景分开抽；开发时看不到测试列表。  
+- 每一局柜子摆哪、转多少，对控制程序保密。  
+- 冻结前还在练习列表里留出一段「当轮没用来抠细节」的场景做自检（大约 13/20），减少「只会刚改过的那几局」。
+
+**看的方式上：**
+
+- 每一局重新用俯视彩色+深度估把手方向和方块位置，不写死世界坐标。  
+- 放置点相对「这一局看到的把手」再往里 5.5 厘米。  
+- 开合是否抓住，靠再看一眼有没有动，而不是读抽屉关节。
+
+**动作上（练习里翻车后改的）：**
+
+| 改动 | 为了解决什么 |
+| --- | --- |
+| 收臂再转正，禁止硬回默认姿势 | 有的摆法下一回姿势会扫关抽屉 |
+| 夹爪角度过滤「空抓」 | 不同位置下「以为抓到了」 |
+| 搬运一直用位置控制 | 换布局后用速度容易抖掉方块 |
+| 关抽屉时锁腕 + 复用开抽屉时的抓点 | 放完后姿势乱、把手相对位置变了 |
+| 靠近距离试两次（约 1.2 cm / 0.5 cm） | 接触远近对摆法敏感 |
+
+**看得见的证据：** 图 7 是同一开合程序在六种柜子摆法下的格子图；开→放→关在保密测试上是 **15/20**。仍有失败（够不着、关不严等），所以是**部分**泛化。
+
+**还没做：** 光照/材质随机、深度噪声仿真、真机迁移实验、以及论文那种「探索越多分数越高」的曲线。
 
 ![图7 六布局开合](assets/gifs/open_close_grid_en.gif)
 
-**图 7 / Fig. 7.** 同一开合程序在六种柜子布局下的表现。
+**图 7.** 同一开合程序，六种平移/偏航摆法（每格上俯视、下侧面）。
 
-### 5. 分数轨迹与失败复盘
+### 5. 分数是怎么来的、翻过哪些车
 
-| 轮次 | Explore / 诊断 | 锁定 |
+| 轮次 | 练习里大致情况 | 保密测试 |
 | --- | --- | --- |
-| Round 1 | 自测约 9/12 | **4 / 20** |
-| Round 2 | fold-then-pick（explore 4/12） | **3 / 20** |
-| Round 3 | 放置 5.5 cm；腕锁关；explore 自检见下 | **15 / 20** |
+| 第 1 轮 | 自测大约 9/12 | **4 / 20** |
+| 第 2 轮 | 改成收臂再抓，练习 4/12 | **3 / 20** |
+| 第 3 轮 | 放置偏后 5.5 cm、腕锁关；练习自检见下 | **15 / 20** |
 
-**分数怎么读：** 开发只改 explore 清单上的程序；`test.json` 的 20 个布局冻结后只评一次，**禁止**用锁定失败再调参。Round 3 冻结前的 explore 自检：前 24 景 **18/24**；另 20 个未参与当轮调试的 explore 景 **13/20**（只判断「能否冻结」）。对外报告的是锁定 **15/20**（见图 4）。
+**怎么读这些数：** 平时只在练习清单上改程序；保密的 20 个场景冻结后只考一次，**不能**看了不及格再改（否则等于对着答案改）。第 3 轮冻结前：练习前 24 局大约 **18/24**；另抽 20 局练习场景大约 **13/20**（只用来判断「能不能冻」）。对外说的是保密测试 **15/20**。
 
 ![图4 评分协议](assets/images/explore-freeze-test.png)
 
-**图 4 / Fig. 4.** explore → freeze → 锁定 test 只评一次；18/24、13/20 是冻结前自检，15/20 是对外成绩。
+**图 4.** 练习 → 冻结 → 保密测试只考一次。
 
-常见失败：搬运推关抽屉；放置压把手；关屉错抓；个别布局不可达。非 RAX 的 `place_close` 对照约 **6/20**。勿把旧 `place_close.py` import 进会话控制器。
+常见翻车：搬方块时顶上抽屉；放在把手上；关上时没抓准；个别摆法手臂够不着。以前那条「不太守规矩」的放置脚本，在同一保密集上大约只有 6/20——说明这任务本身就难。旧脚本不能 import 进现在的会话控制器。
 
-### 6. 复现（`main`）
+### 6. 怎么自己复现
 
 ```bash
 git clone --recursive https://github.com/rocPAI-Forge/so101-simstudio.git
@@ -218,162 +215,51 @@ make rocm-sync && source .venv-rocm/bin/activate
 
 MUJOCO_GL=egl python -m labs.rax_drawer.rax_place.render_place_gif \
   --split test --scene 1
-
-MUJOCO_GL=egl python -m labs.rax_drawer.smoke --with-cameras
 ```
 
-- 方法：[RAX_METHOD.md](https://github.com/rocPAI-Forge/so101-simstudio/blob/main/labs/rax_drawer/rax_place/RAX_METHOD.md)  
-- 过程：`PROCESS.md` · 冻结：`session/CONTROLLER_FROZEN_3` · 结果：`logs/locked_test_3.json`  
-- 论文：[arXiv:2610.22496](https://arxiv.org/abs/2610.22496)
+更多说明在仓库里的 `labs/rax_drawer/rax_place/RAX_METHOD.md`、`PROCESS.md`。冻结标记：`CONTROLLER_FROZEN_3`；结果：`locked_test_3.json`。
 
-### 7. 刻意没用什么
+### 7. 刻意没用的东西
 
-SmolVLA / pi0.5（无示范、布局不匹配）；特权抽屉关节伺服；读锁定失败后再改控制器。
+没拿 SmolVLA / pi0.5 硬套这个抽屉任务（没有示范，相机也不匹配）；没用抽屉关节直接伺服；没在看过保密测试失败后再改程序。
 
-### 8. 引用与链接
+### 8. 引用
 
 ```
 Huang et al., Scaling Online Exploration for Robot Agents, arXiv:2610.22496, 2026.
 https://arxiv.org/abs/2610.22496
 ```
 
-- 代码：[rocPAI-Forge/so101-simstudio](https://github.com/rocPAI-Forge/so101-simstudio) · [`labs/rax_drawer/`](https://github.com/rocPAI-Forge/so101-simstudio/tree/main/labs/rax_drawer)  
-- 精简版：[README.md](README.md) · 系列：[介绍](../so101-simstudio/README.md) · [Lab 01](../so101-simstudio-lab01-pnp/README.md)
+- 代码：[so101-simstudio](https://github.com/rocPAI-Forge/so101-simstudio) · [`labs/rax_drawer/`](https://github.com/rocPAI-Forge/so101-simstudio/tree/main/labs/rax_drawer)  
+- 精简版：[README.md](README.md)
 
 ---
 
 ## English
 
-### 0. What we borrow vs what we claim (honest scope)
+### 0. Honest scope
 
-**RAX** ([Huang et al., arXiv:2610.22496](https://arxiv.org/abs/2610.22496)) argues for scaling **online exploration**: coding agents interact through perception/control APIs, compile successful decisions into programs, and keep notes/skills. The paper’s multi-embodiment scaling numbers (including roughly **+37.4** vs strong baselines) are **not** reproduced or validated here.
+We **borrow and partially practice** [RAX](https://arxiv.org/abs/2610.22496): tool-only sensing (including metric depth), explore → compile → freeze → one locked test, and a long drawer skill as readable code. We do **not** redo the paper’s multi-robot scaling study or its +37.4-style tables. Human + Cursor co-wrote the controller when the official harness was unavailable. Lab is on **`main`**.
 
-**This post borrows and partially practices:** non-privileged API sensing (including metric depth); explore → compile → freeze → held-out locked eval; long-horizon articulated skills as readable code; a pragmatic alternative to teleop+IL when drawer demos are missing.
+Compared with Lab 01 (teleop → BC): same platform, different path — **15/20** place and **16/20** open/close under **our** protocol.
 
-**This post does not claim:** a full RAX empirical twin, exploration-budget scaling curves, or fully autonomous discovery under the official harness. Cursor + `Session` stood in for the coding agent (human–agent co-authorship; prior `place_close.py` is a contamination risk even if unused). Lab is on upstream **`main`** (PR #21).
+### 1–2. Loop, scene, cameras, depth
 
-| | Lab 01 PnP | This lab (RAX-inspired slice) |
-| --- | --- | --- |
-| Data | Teleop demos | No task demos; explore iteration |
-| Artifact | Neural policy | Compiled Python program |
-| Observations | Cameras + state | Tool API; no layout / drawer joint / GT poses |
-| Eval | 50-ep spawn protocol | Explore + **one** locked 20-scene run |
-| Headline score | e.g. ACT 32/50 | place **15/20**; open/close **16/20** (our protocol, not the paper’s tables) |
+Four tools only; no privileged drawer joint / GT poses for control (Fig. 2–3). Success needs handle contact, ≥6 cm open, return within ~5 mm; place also needs the cube in the tray (scorer-only). Overhead RGB-D is the main sense for handle and cube; depth gives metric distance so offsets like “5.5 cm behind the handle” stay meaningful when the cabinet moves (Fig. 1, 3).
 
-### 1. RAX loop in this practice
+### 3–4. Code layout and stages A–F
 
-```
-① Explore → ② Compile → ③ Freeze → Locked test (once)
-```
+Packages under `labs/rax_drawer/rax_place/code/open_place_close/`. Stages: velocity open with re-perception; fold-then-face (no sweeping `go_home`); Jacobian pick; place 5.5 cm behind perceived handle; wrist-locked close reusing open-time `pull` / `grasp_xy` (Fig. 5–6, 8).
 
-Tool-only control; explore ≠ test; deliver a program. We refuse sim privileges (`drawer_slide`, GT poses, contacts) so the pipeline matches a real robot API and supports **sim2real**. See **Fig. 2**.
+### 4.6 Layout generalization (what we actually did)
 
-![Fig. 2 control and observation contract](assets/images/architecture-rax-flow.png)
+**Target:** same program under cabinet **xy / yaw** shifts—not lighting/texture/real-robot domain.
 
-**Fig. 2** (same as 图 2). Control and observation contract.
+**Protocol:** explore vs locked test manifests; layout hidden from the controller; held-out explore self-check before freeze (~13/20).  
+**Perception:** re-estimate handle/`pull`/cube each episode from RGB-D; relative place offset; confirm open by re-seeing motion.  
+**Control fixes from explore failures:** fold-then-face; empty-grasp filter; stay in position mode while carrying; wrist-lock close; clearance retries.  
+**Evidence:** Fig. 7 (six open/close layouts); locked place **15/20**. Still partial; no visual-domain random, no real robot, no exploration-scaling curve.
 
-### 2. Scene, success, camera stack
+### 5–8. Scores, reproduce, citation
 
-`smart_drawer`: lower slide ~0–0.08 m, green table cube. Open/close needs handle contact, ≥6 cm past baseline, return within 5 mm; place also needs the cube in the tray AABB (evaluator-only).
-
-| Camera | Role |
-| --- | --- |
-| `top` | Overhead RGB + **metric depth**; primary 3D perception |
-| `side` | Side RGB; posture cross-check / footage |
-| `wrist` | Gripper RGB; API-available; place path leans on top RGB-D + FK |
-
-![Fig. 3 controller observations](assets/images/cameras-obs-roles.png)
-
-**Fig. 3** (same as 图 3). Non-privileged views available to the controller.
-
-### 2.1 Depth as a first-class citizen (sim and real)
-
-RAX argues agents should lift **metric depth** (and force) into point clouds and object / articulated models, then plan in geometry — as in real air-fryer drawer examples in the paper. This lab compresses that into a teaching loop:
-
-1. **Format:** `depth_images["top"]` as uint16 **millimeters**; convert to meters and unproject with calibration.  
-2. **Sim:** MuJoCo depth rendering validates the **non-privileged geometric pipeline**, not `drawer_slide` cheats; depth keeps handle-line + pull normal estimable under layout randomization.  
-3. **Real:** Noisier depth, same program ownership of cloud + extrinsics; contact probing can patch depth error (also noted in RAX).  
-4. **Without depth:** color still finds the cube, but place offsets (**5.5 cm behind the handle along pull**), open stroke, and close alignment lose stable metric scale.
-
-That is why **Fig. 1** (full-episode clip) and **Fig. 3** (observation breakdown) lay out **overhead color | overhead depth | side color**. Color finds the handle and green cube; depth measures distance for 3D place/grasp; the side view helps humans read arm posture. Depth is a control input, not decoration.
-
-### 3. Module map
-
-Same layout as the Chinese §3: `labs/rax_drawer/` on `main`, with `rax_place/code/open_place_close/` holding the reported freeze-3 controller.
-
-### 4. Multi-stage decomposition & control code (freeze 3)
-
-RAX delivers a **compiled program**, not a one-off chat trace. The agent (here Cursor + `Session`) landed:
-
-`perceive.py` · `motion.py` · `kinematics.py` · `ik.py` · `controller.py`
-
-`main(ctx)` chains `open_drawer` → `pick_and_place` → `close_drawer`, refined as stages **A–F** (see **Fig. 6**). Stages hand off **`pull` / `grasp_xy` / opened handle point`** — never the drawer joint.
-
-![Fig. 6 stage decomposition](assets/images/stage-decomposition.png)
-
-**Fig. 6** (same as 图 6). Multi-stage skill A–F.
-
-**A–B Open (velocity):** RGB-D lower handle; approach / squeeze / pull along `pull`; confirm by re-perceiving handle or pinch motion; record geometry; clear aside.
-
-**C Fold-face:** two joint seeds instead of `go_home` so the arm does not sweep the open tray shut (an explore failure written into code).
-
-**D Pick:** Jacobian `servo_to` via joint `*.pos`; gripper angle rejects empty grasps; lift and verify.
-
-**E Place:** `place_xy = handle_xy - pull * 0.055`; stay in position mode while carrying; open gripper.
-
-**F Close:** pitch away on the robot side of the tray; **wrist-lock** and servo onto the open-time axis back to `grasp_xy`; short velocity finish; `check_success`.
-
-Velocity keys (`vx`/`vy`/…) vs position keys (`*.pos`) share one `Session.step`; the env routes by key name — an explicit engineering choice in the RAX program.
-
-Entry sketch: [`assets/code/controller_stages_snippet.py`](assets/code/controller_stages_snippet.py). Full Chinese narrative: §4 above.
-
-![Fig. 5 phase strip](assets/images/phase-strip-place.png)
-
-**Fig. 5** (same as 图 5). Time strip of one successful episode.
-
-![Fig. 8 side open/close](assets/gifs/open_close.gif)
-
-**Fig. 8** (same as 图 8). Side-view open/close sample (details-only extra).
-
-![Fig. 7 open/close grid](assets/gifs/open_close_grid_en.gif)
-
-**Fig. 7** (same as 图 7). Open/close across six cabinet layouts.
-
-### 5. Score path and failures
-
-Locked **15/20** after rounds 4/20 → 3/20 → 15/20. Pre-freeze explore self-checks (18/24 and 13/20) only decide readiness to freeze; the locked score was not used for retuning (see **Fig. 4**).
-
-![Fig. 4 scoring protocol](assets/images/explore-freeze-test.png)
-
-**Fig. 4** (same as 图 4). Explore → freeze → one locked test.
-
-Failure modes: carrying shuts the drawer; drop onto the handle; miss on close; unreachable layouts. Non-RAX `place_close` ≈ 6/20 on the same locked set.
-
-### 6. Reproduce (`main`)
-
-```bash
-git clone --recursive https://github.com/rocPAI-Forge/so101-simstudio.git
-cd so101-simstudio
-make rocm-sync && source .venv-rocm/bin/activate
-
-./labs/rax_drawer/rax_place/eval_locked.cmd
-
-MUJOCO_GL=egl python -m labs.rax_drawer.rax_place.render_place_gif \
-  --split test --scene 1
-```
-
-[RAX_METHOD.md](https://github.com/rocPAI-Forge/so101-simstudio/blob/main/labs/rax_drawer/rax_place/RAX_METHOD.md) · [arXiv:2610.22496](https://arxiv.org/abs/2610.22496)
-
-### 7. Intentionally unused
-
-No SmolVLA / pi0.5 for this task; no privileged drawer-joint servoing; no retuning from locked failures.
-
-### 8. Citation and links
-
-```
-Huang et al., Scaling Online Exploration for Robot Agents, arXiv:2610.22496, 2026.
-https://arxiv.org/abs/2610.22496
-```
-
-- Code: [so101-simstudio](https://github.com/rocPAI-Forge/so101-simstudio) · [`labs/rax_drawer/`](https://github.com/rocPAI-Forge/so101-simstudio/tree/main/labs/rax_drawer)  
-- Concise: [README.md](README.md) · Series: [intro](../so101-simstudio/README.md) · [Lab 01](../so101-simstudio-lab01-pnp/README.md)
+Rounds locked 4/20 → 3/20 → **15/20**; Fig. 4 explains explore vs freeze vs test. Reproduce with `eval_locked.cmd` on `main`. Cite Huang et al., arXiv:2610.22496. Concise digest: [README.md](README.md).
