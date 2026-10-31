@@ -50,6 +50,8 @@ Session(explore)   code/open_place_close/  CONTROLLER_FROZEN_N
 
 原则：只许 `reset` / `observe` / `step` / `check_success`；explore ≠ test；Freeze 后再计锁定分；交付物是程序。
 
+仿真可轻易读 `drawer_slide`、方块 body、接触数组；我们**不用**这些特权量，因为真机只有关节与相机/深度。非特权是为了与 real API 同构，给 **sim2real** 打基础，而不是在 sim 里走捷径。
+
 ![RAX control and observation contract](assets/images/architecture-rax-flow.png)
 
 ### 2. 场景、成功判据与相机栈
@@ -115,7 +117,9 @@ labs/rax_drawer/          # 已在 so101-simstudio main
 | --- | --- | --- |
 | Round 1 | 自测约 9/12 | **4 / 20** |
 | Round 2 | fold-then-pick（explore 4/12） | **3 / 20** |
-| Round 3 | 放置 5.5 cm；腕锁关；0–23: 18/24；24–43: 13/20 | **15 / 20** |
+| Round 3 | 放置 5.5 cm；腕锁关；explore 自检见下 | **15 / 20** |
+
+**分数怎么读：** 开发只改 explore 清单上的程序；`test.json` 的 20 个布局冻结后只评一次，**禁止**用锁定失败再调参。Round 3 冻结前的 explore 自检：前 24 景 **18/24**；另 20 个未参与当轮调试的 explore 景 **13/20**（只判断「能否冻结」）。对外报告的是锁定 **15/20**。
 
 常见失败：搬运推关抽屉；放置压把手；关屉错抓；个别布局不可达。非 RAX 的 `place_close` 对照约 **6/20**。勿把旧 `place_close.py` import 进会话控制器。
 
@@ -209,7 +213,7 @@ The hero GIF shows **top RGB | top depth + side** because depth is a control inp
 
 ### 3–5. Modules, controller, scores
 
-Same as the Chinese sections: `labs/rax_drawer/` on `main`; freeze-3 place controller; locked **15/20** after rounds 4/20 → 3/20 → 15/20. See phase strip and open/close GIFs above.
+Same as the Chinese sections: `labs/rax_drawer/` on `main`; freeze-3 place controller; locked **15/20** after rounds 4/20 → 3/20 → 15/20. Pre-freeze explore self-checks (18/24 and 13/20) only decide readiness to freeze; the locked 15/20 is the reported number and was not used for retuning. See phase strip and open/close GIFs above.
 
 ![Phase strip](assets/images/phase-strip-place.png)
 

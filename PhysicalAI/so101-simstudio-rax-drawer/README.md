@@ -41,6 +41,8 @@ explore（工具交互） → compile（Python 控制器） → freeze → locke
 
 Agent / 控制器**不能**读柜子布局、抽屉关节、方块真值位姿或接触标志。公开观测是关节状态、相机标定、**顶视 RGB + 度量深度**、侧视 / 腕部 RGB。把手与方块必须从顶视 RGB-D 感知出来。
 
+仿真里其实很容易「开挂」：直接读 `drawer_slide`、方块 body 位姿或接触数组，几行代码就能开合。我们**故意不用**这些特权量，是因为真机世界本来就没有它们——只有关节编码器、相机与深度。控制器若在仿真里依赖特权，学到的是作弊捷径，**无法迁到真机**；坚持非特权观测，等于把 sim 管线做成与 real API 同构的形状，给后续 **sim2real**（换 RealSense / Gemini、同一套感知与控制程序）打基础。
+
 ![RAX control and observation contract](assets/images/architecture-rax-flow.png)
 
 ![What the controller sees: top RGB, top depth, side RGB](assets/images/cameras-obs-roles.png)
@@ -61,7 +63,7 @@ Agent / 控制器**不能**读柜子布局、抽屉关节、方块真值位姿�
 | 仅开合 | `labs/rax_drawer/open_close.py` | **16 / 20** |
 | 开 → 放 → 关 | `labs/rax_drawer/rax_place/` freeze 3 | **15 / 20** |
 
-Place 在 freeze 前：explore 0–23 为 18/24，held-out explore 24–43 为 13/20。锁定 15/20 **未**用于再调参。
+怎么读这些数（RAX 协议）：开发只用 **explore** 场景清单改程序；**test** 是锁死的 20 个未见布局，程序冻结后**只跑一次**，结果不能拿来再调参（否则就是对测试集过拟合）。冻结前我们在 explore 上做了两档自检——前 24 个场景 **18/24**，另外抽 20 个未参与当轮调试的 explore 场景 **13/20**——用来判断「能不能冻」；上表 **15/20** 才是对外报告的锁定成绩。
 
 ![Phase strip: reset → open → pick → place → close](assets/images/phase-strip-place.png)
 
@@ -119,6 +121,8 @@ explore (tool use) → compile (Python controller) → freeze → locked test (o
 
 The agent / controller must **not** read cabinet layout, the drawer joint, ground-truth cube pose, or contact flags. Public observations are joint state, calibration, **overhead RGB + metric depth**, and side / wrist RGB. Handle and cube must come from top RGB-D.
 
+Simulation makes cheating easy: a few lines can read `drawer_slide`, the cube body pose, or contact arrays. We **refuse** those privileged fields on purpose. The real world never exposes them — only joint encoders, cameras, and depth. A controller that leans on sim privileges learns a shortcut that **cannot transfer**. Staying non-privileged keeps the sim pipeline isomorphic to a real robot API and is the right foundation for **sim2real** (swap in RealSense / Gemini, keep the same perception and control code).
+
 ![RAX control and observation contract](assets/images/architecture-rax-flow.png)
 
 ![What the controller sees: top RGB, top depth, side RGB](assets/images/cameras-obs-roles.png)
@@ -139,7 +143,7 @@ Without depth, open/close can limp along on heuristics; geometric place offsets 
 | Open/close only | `labs/rax_drawer/open_close.py` | **16 / 20** |
 | Open → place → close | `labs/rax_drawer/rax_place/` freeze 3 | **15 / 20** |
 
-Before the place freeze: explore 0–23 scored 18/24; held-out explore 24–43 scored 13/20. The locked **15 / 20** was **not** used for further tuning.
+How to read the numbers (RAX protocol): develop only on the **explore** scene list; **test** is a frozen set of 20 unseen layouts scored **once** after freeze — you must not retune from those failures (that would be test-set overfitting). Before freezing we ran two explore self-checks — **18/24** on the first 24 scenes, and **13/20** on another 20 explore scenes held out of that tuning pass — only to decide “ready to freeze.” The table’s **15/20** is the reported locked score.
 
 ![Phase strip: reset → open → pick → place → close](assets/images/phase-strip-place.png)
 
