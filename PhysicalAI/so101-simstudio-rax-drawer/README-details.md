@@ -121,6 +121,8 @@ labs/rax_drawer/          # 已在 so101-simstudio main
 
 **分数怎么读：** 开发只改 explore 清单上的程序；`test.json` 的 20 个布局冻结后只评一次，**禁止**用锁定失败再调参。Round 3 冻结前的 explore 自检：前 24 景 **18/24**；另 20 个未参与当轮调试的 explore 景 **13/20**（只判断「能否冻结」）。对外报告的是锁定 **15/20**。
 
+![Explore → freeze → locked test](assets/images/explore-freeze-test.png)
+
 常见失败：搬运推关抽屉；放置压把手；关屉错抓；个别布局不可达。非 RAX 的 `place_close` 对照约 **6/20**。勿把旧 `place_close.py` import 进会话控制器。
 
 ### 6. 复现（`main`）
@@ -213,7 +215,11 @@ The hero GIF shows **top RGB | top depth + side** because depth is a control inp
 
 ### 3–5. Modules, controller, scores
 
-Same as the Chinese sections: `labs/rax_drawer/` on `main`; freeze-3 place controller; locked **15/20** after rounds 4/20 → 3/20 → 15/20. Pre-freeze explore self-checks (18/24 and 13/20) only decide readiness to freeze; the locked 15/20 is the reported number and was not used for retuning. See phase strip and open/close GIFs above.
+Same as the Chinese sections: `labs/rax_drawer/` on `main`; freeze-3 place controller; locked **15/20** after rounds 4/20 → 3/20 → 15/20. Pre-freeze explore self-checks (18/24 and 13/20) only decide readiness to freeze; the locked 15/20 is the reported number and was not used for retuning.
+
+![Explore → freeze → locked test](assets/images/explore-freeze-test.png)
+
+See phase strip and open/close GIFs above.
 
 ![Phase strip](assets/images/phase-strip-place.png)
 

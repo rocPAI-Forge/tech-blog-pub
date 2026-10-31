@@ -65,6 +65,8 @@ Agent / 控制器**不能**读柜子布局、抽屉关节、方块真值位姿�
 
 怎么读这些数（RAX 协议）：开发只用 **explore** 场景清单改程序；**test** 是锁死的 20 个未见布局，程序冻结后**只跑一次**，结果不能拿来再调参（否则就是对测试集过拟合）。冻结前我们在 explore 上做了两档自检——前 24 个场景 **18/24**，另外抽 20 个未参与当轮调试的 explore 场景 **13/20**——用来判断「能不能冻」；上表 **15/20** 才是对外报告的锁定成绩。
 
+![Explore → freeze → locked test](assets/images/explore-freeze-test.png)
+
 ![Phase strip: reset → open → pick → place → close](assets/images/phase-strip-place.png)
 
 ### 三条工程教训（精简）
@@ -144,6 +146,8 @@ Without depth, open/close can limp along on heuristics; geometric place offsets 
 | Open → place → close | `labs/rax_drawer/rax_place/` freeze 3 | **15 / 20** |
 
 How to read the numbers (RAX protocol): develop only on the **explore** scene list; **test** is a frozen set of 20 unseen layouts scored **once** after freeze — you must not retune from those failures (that would be test-set overfitting). Before freezing we ran two explore self-checks — **18/24** on the first 24 scenes, and **13/20** on another 20 explore scenes held out of that tuning pass — only to decide “ready to freeze.” The table’s **15/20** is the reported locked score.
+
+![Explore → freeze → locked test](assets/images/explore-freeze-test.png)
 
 ![Phase strip: reset → open → pick → place → close](assets/images/phase-strip-place.png)
 
