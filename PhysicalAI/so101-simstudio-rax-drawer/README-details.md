@@ -4,14 +4,14 @@
 
 **语言 / Language:** [中文](#中文) · [English](#english) · 📄 技术详解版 / Deep-dive
 
-> ⚡ 只想快速了解？ → [**精简版 / Concise digest**](README.md)
+> ⚡ 只想 3 分钟故事线与锁定分数？ → [**精简版 / Concise digest**](README.md)（仅图 1、2、6）
 
-> TL;DR：借鉴 [RAX](https://arxiv.org/abs/2610.22496)（*Scaling Online Exploration for Robot Agents*）的论点与方法，在 [SO-101 SimStudio](https://github.com/rocPAI-Forge/so101-simstudio) **`main`** 的 `labs/rax_drawer/` 上做一次 **部分实践 / 工作流切片**（非复现论文多本体缩放结论）：**工具 API → 编译控制器 → freeze → 一次锁定评测**，开抽屉 → 放绿方块 → 关抽屉。公开观测含顶视 **度量深度**。锁定：**开合 16/20**，**place 15/20**（freeze 3）。方法说明：[RAX_METHOD.md](https://github.com/rocPAI-Forge/so101-simstudio/blob/main/labs/rax_drawer/rax_place/RAX_METHOD.md)。
+> TL;DR：借鉴 [RAX](https://arxiv.org/abs/2610.22496) 的论点与方法，在 [SO-101 SimStudio](https://github.com/rocPAI-Forge/so101-simstudio) **`main`** 的 `labs/rax_drawer/` 上做 **部分实践 / 工作流切片**（非复现论文多本体缩放结论）。本详解版展开：观测与深度、模块地图、A–F 控制代码、分数协议与失败复盘、复现命令。锁定：**开合 16/20**，**place 15/20**（freeze 3）。上游方法笔记：[RAX_METHOD.md](https://github.com/rocPAI-Forge/so101-simstudio/blob/main/labs/rax_drawer/rax_place/RAX_METHOD.md)。
 
 > 系列上文：[项目介绍](../so101-simstudio/README-details.md) · [Lab 01 抓取放置](../so101-simstudio-lab01-pnp/README-details.md)  
 > 论文：[arXiv:2610.22496](https://arxiv.org/abs/2610.22496) · [project](https://robot-agent-exploration.com)
 
-> **配图编号（两版共用）：** 图1 全程录像 · 图2 观测契约 · 图3 可见观测 · 图4 评分协议 · 图5 阶段时间条 · 图6 多阶段分解 · 图7 六布局开合 · 图8 侧视开合（仅详解）
+> **配图：** 图1 全程录像 · 图2 观测契约 · 图3 可见观测 · 图4 评分协议 · 图5 阶段时间条 · 图6 多阶段分解 · 图7 六布局开合 · 图8 侧视开合
 
 ![图1 全程任务录像](assets/gifs/open_place_close_rgbd.gif)
 
