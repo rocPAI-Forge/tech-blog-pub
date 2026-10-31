@@ -12,6 +12,8 @@
 
 ![Open → place → close with top RGB, top depth, and side view](assets/gifs/open_place_close_rgbd.gif)
 
+*文首这段录像：上排「俯视彩色 | 俯视深度」，下排侧视。彩色认目标，深度量距离，侧视方便看出机械臂在干什么。 / Top of page: overhead color | overhead depth above a side view — color for identity, depth for distance, side for human-readable posture.*
+
 ---
 
 ## 中文
@@ -54,7 +56,7 @@ Agent / 控制器**不能**读柜子布局、抽屉关节、方块真值位姿�
 - **仿真**：MuJoCo 深度渲染提供干净的度量深度，用来验证「非特权 3D 感知 → 接触控制」管线，而不是偷看 `drawer_slide`。  
 - **真机**：RealSense / Gemini 一类深度相机是同一接口形状；噪声更大，但程序仍应对点云与标定负责——这正是 sim→real 可迁移的契约，而不是换一套特权关节读数。
 
-没有深度，开合尚可勉强靠启发式；**放置点相对把手沿拉开方向再进 5.5 cm** 这类几何约束几乎做不稳。
+没有深度，开合尚可勉强靠启发式；**放置点相对把手沿拉开方向再进 5.5 cm** 这类要靠真实距离的动作就很难稳。所以文首录像才会把**深度画面和彩色并排放**——不是装饰，是控制器算位置时用的同一路信号。
 
 ### 结果（锁定测试，证据）
 
@@ -147,7 +149,7 @@ RGB can label “green cube / dark handle,” but it does not stably give **worl
 - **Simulation:** MuJoCo depth rendering supplies clean metric depth so we can validate a non-privileged 3D perception → contact-control pipeline — not by peeking at `drawer_slide`.  
 - **Real robots:** RealSense / Gemini-class depth shares the same interface shape; noise is higher, but the program still owns the cloud and calibration — that is the sim→real contract, not a privileged joint readout.
 
-Without depth, open/close can limp along on heuristics; geometric place offsets such as **5.5 cm behind the perceived handle along the pull axis** barely hold.
+Without depth, open/close can limp along on heuristics; moves that need real distance — such as dropping **5.5 cm behind the handle along the pull axis** — barely hold. That is why the clip at the top of this page shows **depth next to color**: not decoration, but the same signal the controller uses to compute where to grasp and place.
 
 ### Results (locked test, evidence)
 

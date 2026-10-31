@@ -13,6 +13,8 @@
 
 ![Open → place → close with top RGB, top depth, and side view](assets/gifs/open_place_close_rgbd.gif)
 
+*文首录像（锁定测试场景 1）：上排左俯视彩色、右俯视深度，下侧视。程序用彩色+深度找把手和方块；侧视主要给人看动作。 / Full-episode clip (locked test scene 1): overhead color | depth on top, side view below.*
+
 ---
 
 ## 中文
@@ -80,7 +82,7 @@ RAX 论文明确：相对「只吃 RGB 的通才策略」，Agent 应能用 **me
 3. **真机迁移**：真实深度噪声、孔洞、反光更多，但程序仍应对「云 + 内参/外参」负责；真机可加接触探询等补偿（论文亦观察到力/接触补深度误差）。Sim 先把非特权几何管线跑通，再换传感器实现。  
 4. **没有深度会怎样**：颜色分割仍可找绿块，但 **放置点 = 把手沿 pull 再进 5.5 cm**、拉开行程度量、关屉对准都失去稳定尺度；仅 RGB 的像素启发式在布局一变就碎。
 
-因此 hero GIF 同时展示 **top RGB | top depth + side**：深度不是装饰，而是控制环的几何输入。
+所以上面「控制器看到什么」那张图，以及文首那段**全程任务录像**，才会把画面拼成三块：**俯视彩色 | 俯视深度 | 侧视彩色**。彩色用来认把手和绿方块；深度用来量远近、算三维位置；侧视方便人眼看清机械臂姿态。深度图不是好看的配图，而是程序算抓取/放置点时真正用到的输入。
 
 ### 3. 模块地图
 
@@ -273,7 +275,7 @@ RAX argues agents should lift **metric depth** (and force) into point clouds and
 3. **Real:** Noisier depth, same program ownership of cloud + extrinsics; contact probing can patch depth error (also noted in RAX).  
 4. **Without depth:** color still finds the cube, but place offsets (**5.5 cm behind the handle along pull**), open stroke, and close alignment lose stable metric scale.
 
-The hero GIF shows **top RGB | top depth + side** because depth is a control input, not decoration.
+That is why the “what the controller sees” panel above, and the **full-episode clip at the top of this page**, are laid out as **overhead color | overhead depth | side color**. Color finds the handle and green cube; depth measures distance for 3D place/grasp; the side view helps humans read arm posture. The depth pane is an actual control input, not a pretty extra.
 
 ### 3. Module map
 
