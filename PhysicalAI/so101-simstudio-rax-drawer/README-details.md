@@ -184,7 +184,7 @@ Cursor filled the coding-agent role via `tools.Session` when the official harnes
 ① Explore → ② Compile → ③ Freeze → Locked test (once)
 ```
 
-Tool-only control; explore ≠ test; deliver a program. Architecture figure: see Chinese §1.
+Tool-only control; explore ≠ test; deliver a program. We refuse sim privileges (`drawer_slide`, GT poses, contacts) so the pipeline matches a real robot API and supports **sim2real**. Architecture figure: see Chinese §1.
 
 ![RAX control and observation contract](assets/images/architecture-rax-flow.png)
 
