@@ -24,18 +24,18 @@
 
 [第一篇](../so101-simstudio/README.md)解决 ROCm 上的遥操作与录制；[Lab 01](../so101-simstudio-lab01-pnp/README.md) 打通了示范 → ACT / SmolVLA → 闭环评估。模仿学习很强，但**新本体 / 新长程技能**往往仍要先采一套 teleop 语料；策略也容易被示范分布锁死，难在线上自我改进。
 
-[**RAX**（Robot Agent eXploration）](https://arxiv.org/abs/2610.22496)换了一条轴：**缩放在线探索**。通用编码 Agent 通过机器人感知与控制 API 交互，**不依赖动作示范、手写原语或价值函数**；把成功决策编译成封装「感知—规划—控制」的可执行程序，并在探索中持续修订。论文在仿真与真机、多本体上系统展示：探索量上去，未见场景泛化随之提升；相对强基线平均约 **+37.4** 点，真机亦可零示范掌握铰接、高精度与长程移动操作等。
+[**RAX**（Robot Agent eXploration）](https://arxiv.org/abs/2610.22496)换了一条轴：**缩放在线探索**。通用编码 Agent 通过机器人感知与控制 API 交互，**不依赖动作示范、手写原语或价值函数**；把成功决策编译成封装「感知—规划—控制」的可执行程序，并在探索中持续修订。论文在仿真与真机、多本体上报告了探索规模与泛化、相对强基线约 **+37.4** 等结果——那些是论文自己的系统研究，**本篇不复现、也不声称验证这些数字**。
 
-相对 **teleop → 行为克隆**，这对 **开抽屉 → 放方块 → 关抽屉** 这类任务特别合适：
+我们**借鉴并部分实践**的是其中可迁移到工程课堂的论点与方法：非特权 API 观测（含度量深度）、explore → 编译程序 → freeze → held-out 评测、长程技能拆成可读代码。相对 Lab 01 的 **teleop → 行为克隆**，这对 **开抽屉 → 放方块 → 关抽屉** 这类尚无示范、又要几何接触的任务更对口：
 
-| | Teleop + IL（如 Lab 01） | RAX 探索 + 编译程序 |
+| | Teleop + IL（如 Lab 01） | 本篇借鉴的 RAX 式工作流 |
 | --- | --- | --- |
 | 前置成本 | 要采够成功示范 | 要探索预算与可调用 API |
-| 长程组合 | 示范难覆盖「开—放—关」全序列与恢复 | Agent 可分段试错再合成技能 |
+| 长程组合 | 示范难覆盖「开—放—关」全序列与恢复 | 可分段试错再合成子技能 |
 | 交付物 | 神经网络策略 | 可读、可改的 Python 控制器 |
-| 观测契约 | 常与训练相机布局绑定 | 论文强调 **度量深度** 等构建 3D；与真机 API 对齐 |
+| 观测契约 | 常与训练相机布局绑定 | 关节 + 相机/**深度**，对齐真机 API 形状 |
 
-本篇是 **理论落地的小案例**：在 SO-101 SimStudio 的 `labs/rax_drawer/`（已合入 [`main`](https://github.com/rocPAI-Forge/so101-simstudio)）上，按 RAX 精神跑通非特权工具面 → 编译 → freeze → **一次**锁定评测。
+**本文定位：** 在 SO-101 SimStudio `labs/rax_drawer/`（已合入 [`main`](https://github.com/rocPAI-Forge/so101-simstudio)）上做一个 **RAX 工作流的可复现切片**——不是论文多本体缩放实验的翻版，而是人 + 编码 Agent 在同一套约束下跑通非特权工具面 → 编译 → freeze → **一次**锁定评测，并报告成绩。
 
 ```
 explore（工具交互） → compile（Python 控制器） → freeze → locked test（一次）
@@ -129,18 +129,18 @@ make rocm-sync && source .venv-rocm/bin/activate
 
 The [intro post](../so101-simstudio/README.md) covered teleop and recording on ROCm; [Lab 01](../so101-simstudio-lab01-pnp/README.md) closed the imitation loop (demos → ACT / SmolVLA → eval). Imitation learning works well, yet a **new embodiment or long-horizon skill** still usually needs its own teleop corpus, and policies stay bounded by the demonstration distribution.
 
-[**RAX** (Robot Agent eXploration)](https://arxiv.org/abs/2610.22496) scales a different axis: **online exploration**. A general-purpose coding agent interacts through perception and control APIs — **without action demos, hand-engineered primitives, or value-function guidance** — and compiles successful decisions into executable programs that wrap the full perception–planning–control loop. Across embodiments in sim and on real robots, the paper shows generalization rising with exploration and roughly **+37.4** points on average over strong baselines, including zero-demo mastery of articulated, high-precision, and long-horizon mobile tasks.
+[**RAX** (Robot Agent eXploration)](https://arxiv.org/abs/2610.22496) scales a different axis: **online exploration**. A general-purpose coding agent interacts through perception and control APIs — **without action demos, hand-engineered primitives, or value-function guidance** — and compiles successful decisions into executable perception–planning–control programs. The paper’s multi-embodiment scaling results (including roughly **+37.4** vs strong baselines) are **its** evidence — **this post does not reproduce or claim to validate those numbers**.
 
-Versus **teleop → behavior cloning**, that fits **open → place cube → close** especially well:
+What we **borrow and partially practice** are the parts that transfer to a teaching lab: non-privileged API observations (including metric depth), explore → compile → freeze → held-out eval, and long-horizon skills as readable code. Versus Lab 01’s **teleop → behavior cloning**, that fits **open → place cube → close** when demos are missing and contact geometry matters:
 
-| | Teleop + IL (e.g. Lab 01) | RAX explore + compiled program |
+| | Teleop + IL (e.g. Lab 01) | RAX-style workflow (this lab) |
 | --- | --- | --- |
 | Upfront cost | Enough successful demos | Exploration budget + callable APIs |
-| Long horizon | Hard to cover open–place–close + recovery | Agent can stage failures then compose skills |
+| Long horizon | Hard to cover open–place–close + recovery | Stage failures, then compose sub-skills |
 | Artifact | Neural policy | Readable, editable Python controller |
-| Sensing | Often tied to training camera layouts | Paper stresses **metric depth** for 3D; aligns with real APIs |
+| Sensing | Often tied to training camera layouts | Joints + cameras/**depth**; real-API-shaped |
 
-This post is a **theory-meets-practice case study** on SO-101 SimStudio’s `labs/rax_drawer/` (now on [`main`](https://github.com/rocPAI-Forge/so101-simstudio)): non-privileged tools → compile → freeze → **one** locked eval.
+**Positioning:** a **reproducible slice of the RAX workflow** on SO-101 SimStudio `labs/rax_drawer/` (on [`main`](https://github.com/rocPAI-Forge/so101-simstudio)) — not a twin of the paper’s scaling study. Human + coding agent under the same constraints: non-privileged tools → compile → freeze → **one** locked eval, then report the score.
 
 ```
 explore (tool use) → compile (Python controller) → freeze → locked test (once)

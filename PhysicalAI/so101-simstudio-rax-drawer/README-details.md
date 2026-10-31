@@ -6,7 +6,7 @@
 
 > ⚡ 只想快速了解？ → [**精简版 / Concise digest**](README.md)
 
-> TL;DR：以 [RAX](https://arxiv.org/abs/2610.22496)（*Scaling Online Exploration for Robot Agents*）为理论框架，在 [SO-101 SimStudio](https://github.com/rocPAI-Forge/so101-simstudio) **`main`** 的 `labs/rax_drawer/` 上落地：**工具 API → 编译控制器 → freeze → 一次锁定评测**，完成开抽屉 → 放绿方块 → 关抽屉。公开观测含顶视 **度量深度**。锁定：**开合 16/20**，**place 15/20**（freeze 3）。方法说明：[RAX_METHOD.md](https://github.com/rocPAI-Forge/so101-simstudio/blob/main/labs/rax_drawer/rax_place/RAX_METHOD.md)。
+> TL;DR：借鉴 [RAX](https://arxiv.org/abs/2610.22496)（*Scaling Online Exploration for Robot Agents*）的论点与方法，在 [SO-101 SimStudio](https://github.com/rocPAI-Forge/so101-simstudio) **`main`** 的 `labs/rax_drawer/` 上做一次 **部分实践 / 工作流切片**（非复现论文多本体缩放结论）：**工具 API → 编译控制器 → freeze → 一次锁定评测**，开抽屉 → 放绿方块 → 关抽屉。公开观测含顶视 **度量深度**。锁定：**开合 16/20**，**place 15/20**（freeze 3）。方法说明：[RAX_METHOD.md](https://github.com/rocPAI-Forge/so101-simstudio/blob/main/labs/rax_drawer/rax_place/RAX_METHOD.md)。
 
 > 系列上文：[项目介绍](../so101-simstudio/README-details.md) · [Lab 01 抓取放置](../so101-simstudio-lab01-pnp/README-details.md)  
 > 论文：[arXiv:2610.22496](https://arxiv.org/abs/2610.22496) · [project](https://robot-agent-exploration.com)
@@ -21,28 +21,30 @@
 
 ## 中文
 
-### 0. RAX 方法、意义，以及为何做这个案例
+### 0. 我们借鉴了什么、实践了什么（诚实边界）
 
-机器人学习近年靠**缩放示范数据与模型容量**（VLA / WAM 等）进展很大，但换一个本体或任务，通常仍要重新采 teleop；学到的策略也被示范分布束缚，难在交互中自我发现与组合新技能。Huang 等人提出的 **RAX（Robot Agent eXploration）** 把主轴换成 **缩放在线探索**：冻结参数的通用编码 Agent 经感知与控制 API 试任务，把成功决策**编译**成封装感知—规划—控制的可执行程序，并用持久记忆（笔记、已验证技能）跨 episode / 任务复用。论文报告：仿真五套基准相对强基线平均约 **+37.4**；真机可零示范掌握铰接、高精度、可变形与长程移动操作等；新本体只需接 API，而不必先采示范再训策略。
+机器人学习近年靠**缩放示范数据与模型容量**（VLA / WAM 等）进展很大，但换一个本体或任务，通常仍要重新采 teleop；学到的策略也被示范分布束缚。Huang 等人提出的 **RAX（Robot Agent eXploration）** 把主轴换成 **缩放在线探索**：编码 Agent 经感知与控制 API 试任务，把成功决策**编译**成可执行程序，并维护笔记/技能记忆。论文在多本体、仿真与真机上给出了探索规模与泛化、相对基线约 **+37.4** 等系统结果。
 
-**相对 teleop 的优势（针对本任务）**
+**本篇不声称：** 复现或验证上述论文级结论；也没有做探索预算扫描、多本体对照或官方 RAX harness 全自动发现。
 
-1. **前置成本**：开→放→关 全序列示范贵且难覆盖失败恢复；RAX 用探索预算换程序。  
-2. **长程组合**：开、抓、放、关可分段试错再合成；IL 要对齐整条轨迹分布。  
-3. **可解释交付**：产出是可读 Python，便于工程审阅与定点修补，而非只调 checkpoint。  
-4. **传感契约**：RAX 强调 RGB、**度量深度**、力等；与「真机只有相机 API」一致，而不是仿真里偷看关节。
+**本篇确实借鉴并部分实践的：**
 
-**本案例的定位**：不复现论文全套多本体评测，而是在 AMD ROCm / MuJoCo 的 SO-101 上做一个**可复现的小切片**——铰接抽屉 + 放置 + 关合，严格非特权工具面，诚实锁定计分。与 Lab 01（teleop → BC）形成对照：**同一平台，两条学习轴**。
+1. **非特权 API 契约**——控制不用仿真抽屉关节/真值位姿；公开观测含关节、标定、RGB 与**度量深度**（贴合真机、利于 sim2real 形状对齐）。  
+2. **explore → 编译程序 → freeze → held-out 锁定评**——开发与正式分数分离。  
+3. **长程铰接任务拆成可读子技能**——开 / 放 / 关写成 `controller.py`，而不是一条隐式策略。  
+4. **相对 teleop+IL 的动机**：本任务无抽屉示范时，先走 RAX 式工作流往往比硬套 Lab 01 VLA 更务实。
 
-| | Lab 01 PnP | RAX drawer place |
+官方 Claude Code / RAX harness 凭证不可用时，由 **Cursor + `tools.Session`** 扮演编码 Agent（人机协作痕迹存在；主机上曾有 `place_close.py`，会话控制器不得 import，但仍有污染风险）。工具面与 `RaxDrawerBackend` 的 `drawer_*` 对齐，便于日后接到真实 RAX service。Lab 已合入上游 **`main`**（PR #21）。
+
+与 Lab 01（teleop → BC）对照——**同一平台，两条学习轴；本轴是 RAX 工作流切片，不是论文翻版**：
+
+| | Lab 01 PnP | 本篇（借鉴 RAX 的切片） |
 | --- | --- | --- |
-| 数据 | 遥操作示范 | 无示范；Agent 探索 |
+| 数据 | 遥操作示范 | 无该任务示范；explore 迭代 |
 | 产出 | 神经网络策略 | 编译后的 Python 程序 |
 | 观测 | 相机 + 状态（训练标签含动作） | 工具 API；无布局 / 抽屉关节 / 真值位姿 |
 | 评测 | 50 集 spawn 协议 | explore 开发 + **一次** locked 20 场景 |
-| 代表分数 | ACT 32/50 等 | place **15/20**；开合 **16/20** |
-
-本机官方 Claude Code / RAX harness 凭证不可用时，由 Cursor 通过 `tools.Session` 扮演编码 Agent；工具面与 `RaxDrawerBackend` 的 `drawer_*` 对齐，便于日后接到真实 RAX robot service。Lab 已合入上游 **`main`**（PR #21）。
+| 代表分数 | ACT 32/50 等 | place **15/20**；开合 **16/20**（自身协议，非论文基线表） |
 
 ### 1. 实践中的 RAX 循环
 
@@ -242,23 +244,21 @@ https://arxiv.org/abs/2610.22496
 
 ## English
 
-### 0. RAX: method, why it matters, and this case study
+### 0. What we borrow vs what we claim (honest scope)
 
-Robot learning has scaled demonstration data and model capacity (VLAs / WAMs), yet a new embodiment or task still usually needs fresh teleop, and policies remain bounded by the imitation distribution. **RAX (Robot Agent eXploration)** ([Huang et al., arXiv:2610.22496](https://arxiv.org/abs/2610.22496)) instead scales **online exploration**: a frozen coding agent interacts through perception and control APIs, **compiles** successful decisions into executable perception–planning–control programs, and keeps persistent notes / verified skills. Reported results include roughly **+37.4** average points over strong sim baselines and zero-demo real-robot mastery of articulated, high-precision, deformable, and long-horizon mobile tasks. New robots integrate via APIs rather than a teleop corpus first.
+**RAX** ([Huang et al., arXiv:2610.22496](https://arxiv.org/abs/2610.22496)) argues for scaling **online exploration**: coding agents interact through perception/control APIs, compile successful decisions into programs, and keep notes/skills. The paper’s multi-embodiment scaling numbers (including roughly **+37.4** vs strong baselines) are **not** reproduced or validated here.
 
-**Advantages vs teleop for this drawer horizon:** lower demo cost; staged discovery of open / pick / place / close; a readable program artifact; a sensing contract that includes **metric depth**, matching real camera APIs instead of privileged sim joints.
+**This post borrows and partially practices:** non-privileged API sensing (including metric depth); explore → compile → freeze → held-out locked eval; long-horizon articulated skills as readable code; a pragmatic alternative to teleop+IL when drawer demos are missing.
 
-This post is a **small, reproducible slice** on SO-101 SimStudio (AMD ROCm / MuJoCo): articulated drawer + place + close, non-privileged tools, honest locked scoring — contrasting Lab 01’s teleop→BC axis on the **same platform**. The lab lives on upstream **`main`** (merged via PR #21).
+**This post does not claim:** a full RAX empirical twin, exploration-budget scaling curves, or fully autonomous discovery under the official harness. Cursor + `Session` stood in for the coding agent (human–agent co-authorship; prior `place_close.py` is a contamination risk even if unused). Lab is on upstream **`main`** (PR #21).
 
-| | Lab 01 PnP | RAX drawer place |
+| | Lab 01 PnP | This lab (RAX-inspired slice) |
 | --- | --- | --- |
-| Data | Teleop demos | No demos; agent exploration |
+| Data | Teleop demos | No task demos; explore iteration |
 | Artifact | Neural policy | Compiled Python program |
 | Observations | Cameras + state | Tool API; no layout / drawer joint / GT poses |
 | Eval | 50-ep spawn protocol | Explore + **one** locked 20-scene run |
-| Headline score | e.g. ACT 32/50 | place **15/20**; open/close **16/20** |
-
-Cursor filled the coding-agent role via `tools.Session` when the official harness was unavailable; the surface matches `RaxDrawerBackend` `drawer_*` calls.
+| Headline score | e.g. ACT 32/50 | place **15/20**; open/close **16/20** (our protocol, not the paper’s tables) |
 
 ### 1. RAX loop in this practice
 
