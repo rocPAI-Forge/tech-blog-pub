@@ -98,12 +98,74 @@ labs/rax_drawer/          # 已在 so101-simstudio main
     eval_locked.cmd
 ```
 
-### 4. 感知与控制设计（freeze 3）
+### 4. 多阶段分解与控制代码（freeze 3）
 
-**感知**：顶视 RGB-D → 点云 → 暗色横杆拟合把手与水平 `pull`；绿色掩码取方块质心。  
-**开抽屉**：速度域接触拉开；用再感知确认，不读 `drawer_slide`。  
-**抓放**：**fold-then-face** + 雅可比 `.pos`；放置 `PLACE_BEHIND_M = 0.055`。  
-**关抽屉**：侧向抬腕 → 腕锁伺服 → 推回记录抓握点。
+RAX 的交付物不是「一次 chat 里点几下」，而是把探索中验证过的决策**编译**成可复用程序。对本任务，Agent（本实践中为 Cursor + `Session`）最终落成：
+
+```
+code/open_place_close/
+  perceive.py     # 顶视 RGB-D → 把手 / 方块
+  motion.py       # 速度域：approach_xy / move_xy / slide
+  kinematics.py   # 关节观测 → EE（FK）
+  ik.py           # 阻尼雅可比 servo_to（关节 *.pos）
+  controller.py   # open_drawer → pick_and_place → close_drawer
+```
+
+入口把长程拆成三个函数（见 [`assets/code/controller_stages_snippet.py`](assets/code/controller_stages_snippet.py)），再细分为 A–F：
+
+![Stage decomposition A–F](assets/images/stage-decomposition.png)
+
+**为何要拆阶段：** 开屉要接触柔顺（速度域），抓放要厘米级到位（位置域 IK），关屉要在托盘被占用后仍对准把手。混在一个大循环里难调试；RAX 风格是先在 explore 上把子技能跑通，再在 `main` 里组合，阶段之间只传递 **`pull` / `grasp_xy` / 开后把手点`**——评估器里的抽屉关节始终不可见。
+
+#### 4.1 感知公共件（`perceive.py`）
+
+- 深度 mm→m，用 `top` 标定反投影有效像素 → 世界点云。  
+- **下层把手**：ROI 内暗色横杆拟合直线，水平法向取朝向固定臂座的 `pull`（单位向量）。  
+- **绿方块**：颜色掩码 + 点云质心。  
+失败则 `RuntimeError`，该 episode 放弃——不回退读 MuJoCo geom。
+
+#### 4.2 A–B：`open_drawer`（速度域）
+
+1. `observe(cameras=True)` → `find_lower_handle`。  
+2. `slide` / `wrist_flex` 俯身；`approach_xy` 到把手前 `GRASP_CLEARANCE_M`（约 1.2 cm），夹紧后再小拉。  
+3. **确认抓住**：再次感知把手是否沿 `pull` 移动 ≥1 cm，或夹爪捏点移动 ≥1 cm（把手看不见时的后备）。失败则松爪后退换 clearance 重试。  
+4. 沿 `pull` 再拉到约 `PULL_DISTANCE_M=0.075`（成功门槛 ≥6 cm）。  
+5. 松爪；返回 `{"point", "pull", "grasp_xy"}` 给后续阶段。  
+**B 清空**：`pick_and_place` 开头再沿 `pull` 滑开一段，避免夹爪挡顶视。
+
+#### 4.3 C–E：`pick_and_place`（位置域为主）
+
+**C fold-then-face（关键）**  
+开完后若直接 `go_home`，关节插值会横扫开着的托盘把它顶回去。`_ready_for_pick` 改为两段关节种子：先收臂上折，再 yaw 朝前——托盘保持打开。这是 explore 里用失败反推写进代码的典型 RAX 修订。
+
+**D 抓取**  
+1. 再感知方块；`servo_to` 走若干路点落到 `GRASP_Z`。  
+2. `servo_to`（`ik.py`）：用机器人模型雅可比，在观测关节上迭代，经 `shoulder_pan.pos` … 等 **位置动作** 下发（`duration_s≈1/30`）。  
+3. 夹紧后读 `gripper.position_rad`：若 ≤ −0.05 视为空抓失败。  
+4. 抬到 `LIFT_Z`；可选再看方块高度确认「在手里」。
+
+**E 放置**  
+1. 再估把手（失败则用开屉记录的 `point`）。  
+2. `place_xy = handle_xy - pull * PLACE_BEHIND_M`（**0.055 m**）——落在托盘内，而不是压在横杆上（压杆会关屉或掉外面）。  
+3. 先抬高再平移再落到 `PLACE_Z`；**全程保持位置域**（中途切回速度曾抖掉方块）。打开夹爪。
+
+#### 4.4 F：`close_drawer`（腕锁伺服）
+
+放完后腕部姿态常已偏离开屉时的俯身角；纯速度爬升容易「摸空」。程序：
+
+1. 抬高并沿 `pull` 退到托盘机器人一侧。  
+2. 一次 `wrist_flex_rate` 俯身，**锁住**此时腕关节角。  
+3. 在 `lock_wrist=True` 下 `servo_to` 对准开后把手附近 → 夹紧 → 再伺服到开屉记录的 `grasp_xy`，必要时 `move_xy` 挤握收尾。  
+4. 短速度推一下；`check_success` 看回位 + 方块在屉内。
+
+#### 4.5 双动作模式小结
+
+| 模式 | 工具动作 | 用在 |
+| --- | --- | --- |
+| 速度 | `vx/vy/vz`, `wrist_flex_rate`, `gripper_delta` | 开屉接触、清空、关屉末推 |
+| 位置 | `*.pos`（经 `servo_to` / `_send`） | 收臂、抓取、搬运、腕锁关屉 |
+
+同一 `Session.step`；环境按 key 名分流。这与 RAX「程序里显式写感知—规划—控制」一致：模式切换是可读的工程决策，不是隐式策略网络。
 
 ![Phase strip](assets/images/phase-strip-place.png)
 
@@ -213,19 +275,47 @@ RAX argues agents should lift **metric depth** (and force) into point clouds and
 
 The hero GIF shows **top RGB | top depth + side** because depth is a control input, not decoration.
 
-### 3–5. Modules, controller, scores
+### 3. Module map
 
-Same as the Chinese sections: `labs/rax_drawer/` on `main`; freeze-3 place controller; locked **15/20** after rounds 4/20 → 3/20 → 15/20. Pre-freeze explore self-checks (18/24 and 13/20) only decide readiness to freeze; the locked 15/20 is the reported number and was not used for retuning.
+Same layout as the Chinese §3: `labs/rax_drawer/` on `main`, with `rax_place/code/open_place_close/` holding the reported freeze-3 controller.
 
-![Explore → freeze → locked test](assets/images/explore-freeze-test.png)
+### 4. Multi-stage decomposition & control code (freeze 3)
 
-See phase strip and open/close GIFs above.
+RAX delivers a **compiled program**, not a one-off chat trace. The agent (here Cursor + `Session`) landed:
+
+`perceive.py` · `motion.py` · `kinematics.py` · `ik.py` · `controller.py`
+
+`main(ctx)` chains `open_drawer` → `pick_and_place` → `close_drawer`, refined as stages **A–F**. Stages hand off **`pull` / `grasp_xy` / opened handle point`** — never the drawer joint.
+
+![Stage decomposition A–F](assets/images/stage-decomposition.png)
+
+**A–B Open (velocity):** RGB-D lower handle; approach / squeeze / pull along `pull`; confirm by re-perceiving handle or pinch motion; record geometry; clear aside.
+
+**C Fold-face:** two joint seeds instead of `go_home` so the arm does not sweep the open tray shut (an explore failure written into code).
+
+**D Pick:** Jacobian `servo_to` via joint `*.pos`; gripper angle rejects empty grasps; lift and verify.
+
+**E Place:** `place_xy = handle_xy - pull * 0.055`; stay in position mode while carrying; open gripper.
+
+**F Close:** pitch away on the robot side of the tray; **wrist-lock** and servo onto the open-time axis back to `grasp_xy`; short velocity finish; `check_success`.
+
+Velocity keys (`vx`/`vy`/…) vs position keys (`*.pos`) share one `Session.step`; the env routes by key name — an explicit engineering choice in the RAX program.
+
+Entry sketch: [`assets/code/controller_stages_snippet.py`](assets/code/controller_stages_snippet.py). Full Chinese narrative: §4 above.
 
 ![Phase strip](assets/images/phase-strip-place.png)
 
 ![Open and close side view](assets/gifs/open_close.gif)
 
 ![Open/close grid](assets/gifs/open_close_grid_en.gif)
+
+### 5. Score path and failures
+
+Locked **15/20** after rounds 4/20 → 3/20 → 15/20. Pre-freeze explore self-checks (18/24 and 13/20) only decide readiness to freeze; the locked score was not used for retuning.
+
+![Explore → freeze → locked test](assets/images/explore-freeze-test.png)
+
+Failure modes: carrying shuts the drawer; drop onto the handle; miss on close; unreachable layouts. Non-RAX `place_close` ≈ 6/20 on the same locked set.
 
 ### 6. Reproduce (`main`)
 

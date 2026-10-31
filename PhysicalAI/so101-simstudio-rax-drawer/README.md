@@ -69,11 +69,22 @@ Agent / 控制器**不能**读柜子布局、抽屉关节、方块真值位姿�
 
 ![Phase strip: reset → open → pick → place → close](assets/images/phase-strip-place.png)
 
-### 三条工程教训（精简）
+### 多阶段怎么拆（RAX 编译出的技能）
 
-1. 拉开后不要直 `go_home`——关节扫掠会把开着的抽屉顶回去；要 **fold-then-face** 再抓方块。  
-2. 放置点在感知到的把手沿拉开方向 **再进 5.5 cm**，落在托盘内，而不是压在把手上。  
-3. 放完再关：先侧向抬腕，再 **腕锁伺服** 对齐拉开轴，推回记录的抓握点。
+长程任务不会写成「一步神经网络」。RAX 探索后把经验**编译**成 `main(ctx)` 串联的子技能；阶段之间用手递几何，而不是抽屉关节：
+
+![Stage decomposition A–F](assets/images/stage-decomposition.png)
+
+| 阶段 | 做什么 | 控制方式（摘要） |
+| --- | --- | --- |
+| **A 开屉** | RGB-D 找下层把手，估水平 `pull` | 速度域靠近 / 夹紧 / 沿 `pull` 拉；**再感知**确认 |
+| **B 清空** | 松爪、沿拉开方向让开 | 为抓方块腾出视线与空间 |
+| **C 收臂朝向** | **fold-then-face**（禁止直 `go_home`） | 关节位姿两段式，避免扫关抽屉 |
+| **D 抓取** | 绿方块质心 → 接近 → 夹紧 | 雅可比 **关节 `.pos`** 伺服；夹爪角过滤空抓 |
+| **E 放置** | 把手沿 `pull` **再进 5.5 cm** 下落 | 全程位置域搬运，打开夹爪 |
+| **F 关屉** | 侧向抬腕 → **腕锁**对准 → 推回开屉时的 `grasp_xy` | 开屉记下的轴复用到关闭 |
+
+入口与交接见 [`assets/code/controller_stages_snippet.py`](assets/code/controller_stages_snippet.py)；完整感知 / IK / 关屉细节在 [详解版 §4](README-details.md#4-多阶段分解与控制代码freeze-3)。
 
 仅开合在多种柜子平移 / 偏航下的泛化见下（顶视 + 侧视网格）：
 
@@ -151,11 +162,22 @@ How to read the numbers (RAX protocol): develop only on the **explore** scene li
 
 ![Phase strip: reset → open → pick → place → close](assets/images/phase-strip-place.png)
 
-### Three engineering lessons (short)
+### How the skill is decomposed (what RAX compiled)
 
-1. After opening, do not go straight `go_home` — the joint sweep can shove the open tray shut; **fold-then-face** before the pick.  
-2. Drop **5.5 cm behind** the perceived handle along the pull axis so the cube lands in the tray, not on the bar.  
-3. After place: pitch away, then **wrist-locked servo** onto the pull axis and push back to the recorded grasp.
+The long horizon is not one neural net step. Exploration is compiled into `main(ctx)` sub-skills; stages hand off **geometry**, not the drawer joint:
+
+![Stage decomposition A–F](assets/images/stage-decomposition.png)
+
+| Stage | What | Control (short) |
+| --- | --- | --- |
+| **A Open** | RGB-D lower handle + horizontal `pull` | Velocity approach / squeeze / pull; **re-perceive** to confirm |
+| **B Clear** | Release and slide aside | Free line of sight for the cube |
+| **C Fold-face** | **fold-then-face** (no direct `go_home`) | Two joint seeds so the arm does not sweep the tray shut |
+| **D Pick** | Green-cube centroid → approach → close | Jacobian **joint `.pos`** servos; gripper angle filters empty grasps |
+| **E Place** | Drop **5.5 cm behind** the handle along `pull` | Stay in position mode while carrying; open gripper |
+| **F Close** | Pitch away → **wrist-lock** → push to open-time `grasp_xy` | Reuse the recorded pull axis |
+
+Entry / handoff: [`assets/code/controller_stages_snippet.py`](assets/code/controller_stages_snippet.py). Full perceive / IK / close detail: [deep-dive §4](README-details.md#4-multi-stage-decomposition--control-code-freeze-3).
 
 Open/close generalization across cabinet shifts / yaws (overhead + side grid):
 
