@@ -237,29 +237,214 @@ https://arxiv.org/abs/2610.22496
 
 ## English
 
-### 0. Honest scope
+### 0. What we borrowed, and what we wrote ourselves
 
-We **borrow and partially practice** [RAX](https://arxiv.org/abs/2610.22496): tool-only sensing (including metric depth), explore → compile → freeze → one locked test, and a long drawer skill as readable code. We do **not** redo the paper’s multi-robot scaling study or its +37.4-style tables. Human + Cursor co-wrote the controller when the official harness was unavailable. Lab is on **`main`**.
+A popular path in robot learning is to collect more human demos and scale the model (all kinds of VLAs). Change the arm or the task, and you often have to collect again. The policy also tends to work only on scenes that look like the demos.
 
-Compared with Lab 01 (teleop → BC): same platform, different path — **15/20** place and **16/20** open/close under **our** protocol.
+[RAX](https://arxiv.org/abs/2610.22496) takes another path: a **coding agent** tries against the robot interface, and the attempts that work are **kept as a program**, instead of stacking demos and then training. The paper runs a broad study across robots and real hardware, and reports results on the order of +37.4 over a baseline.
 
-### 1–2. Loop, scene, cameras, depth
+**This note does not rerun those large experiments.** With no official RAX toolchain available, we used **Cursor plus a Session API we wrote ourselves** and practiced one short skill in the SO-101 sim: **open the drawer → place the green cube → close**. People also edited the code, so this is a human-and-agent programming practice. It is not a paper-scale replay of “a pure agent discovers the skill from scratch,” and it does not reuse official RAX code.
 
-Four tools only; no privileged drawer joint / GT poses for control (Fig. 2–3). Success needs handle contact, ≥6 cm open, return within ~5 mm; place also needs the cube in the tray (scorer-only). Overhead RGB-D is the main sense for handle and cube; depth gives metric distance so offsets like “5.5 cm behind the handle” stay meaningful when the cabinet moves (Fig. 1, 3).
+What we actually took from the paper, and put into our own code, is mainly this:
 
-### 3–4. Code layout and stages A–F
+1. **No privileged sim state at control time.** The program cannot read “how many centimeters the drawer has slid” or the cube’s true pose. It may use joints, cameras, and depth. That is closer to a real robot, and it leaves room to swap in a real camera later.
+2. **Practice, then freeze, then a closed-book test.** Development uses one set of scenes. The reported score uses another. After the test starts, the program is not edited to chase the score.
+3. **A long skill as readable stages.** Open, grasp, place, and close stay explicit, instead of disappearing into a black-box network.
+4. **This task has no ready teleop demos.** Forcing Lab 01’s VLA onto it is a poor fit. “Try, then write it down as a program” is the practical path.
 
-Packages under `labs/rax_drawer/rax_place/code/open_place_close/`. Stages: velocity open with re-perception; fold-then-face (no sweeping `go_home`); Jacobian pick; place 5.5 cm behind perceived handle; wrist-locked close reusing open-time `pull` / `grasp_xy` (Fig. 5–6, 8).
+The lab is on so101-simstudio **`main`**.
 
-### 4.6 Layout generalization (what we actually did)
+Same repo, two paths, next to Lab 01:
 
-**Target:** same program under cabinet **xy / yaw** shifts—not lighting/texture/real-robot domain.
+| | Lab 01 | This note |
+| --- | --- | --- |
+| Where the behavior comes from | Human teleop demos | No demos for this task; trials in practice scenes |
+| What is left at the end | A neural policy | A Python controller |
+| What control can see | Cameras + state (action labels exist at train time) | Tool API; cabinet layout and the drawer joint stay hidden |
+| How it is scored | An agreed spawn evaluation | Develop on practice scenes + **one** locked test of 20 scenes |
+| Number we report | e.g. ACT 32/50 | Open/close 16/20; open-place-close 15/20 (our rules, not the paper’s table) |
 
-**Protocol:** explore vs locked test manifests; layout hidden from the controller; held-out explore self-check before freeze (~13/20).  
-**Perception:** re-estimate handle/`pull`/cube each episode from RGB-D; relative place offset; confirm open by re-seeing motion.  
-**Control fixes from explore failures:** fold-then-face; empty-grasp filter; stay in position mode while carrying; wrist-lock close; clearance retries.  
-**Evidence:** Fig. 7 (six open/close layouts); locked place **15/20**. Still partial; no visual-domain random, no real robot, no exploration-scaling curve.
+### 1. How one cycle actually runs
 
-### 5–8. Scores, reproduce, citation
+```
+① Try a few times in practice scenes
+② Write the reliable behavior down as a program (compile)
+③ Freeze: stop editing the code to chase the test score
+④ Score once on the locked scenes
+```
 
-Rounds locked 4/20 → 3/20 → **15/20**; Fig. 4 explains explore vs freeze vs test. Reproduce with `eval_locked.cmd` on `main`. Cite Huang et al., arXiv:2610.22496. Concise digest: [README.md](README.md).
+Only four calls can move the arm: `reset`, `observe`, `step`, and `check_success`.
+
+Cheating in sim is easy: read the drawer joint and the cube pose directly. We **leave those unread**. A real robot has no god view either, only motor angles and cameras. Keeping the same rule in sim is so the interface can still line up when we later swap in hardware, instead of taking a sim shortcut.
+
+![Fig. 2 control and observation contract](assets/images/architecture-rax-flow.png)
+
+**Fig. 2.** Who can see what: the side that writes the program gets public observations only through the tools. Drawer ground truth used for scoring stays inside the evaluator.
+
+### 2. The scene, and what counts as success
+
+The scene is a cabinet with a lower drawer and a green cube on the table. The drawer travels about 0–8 cm.
+
+**Open/close only:** the open must touch the handle; the drawer must end at least about **6 cm** farther out than at the start of the episode; the close must touch the handle again and return to about **5 mm** of the start pose.  
+**Open + place + close:** all of the above, and the cube must end in the drawer tray. The scorer decides that. The controller cannot read “is the cube already in the tray?” as a cheat signal.
+
+| Camera | What it is for |
+| --- | --- |
+| Overhead `top` | RGB + **metric depth**. Finding the handle and the green cube relies on this view |
+| Side `side` | RGB. Useful for watching the pose, and for the recording |
+| Wrist `wrist` | A view near the gripper. The API exposes it; this program mostly uses the overhead view plus joint estimates |
+
+![Fig. 3 observations the controller can see](assets/images/cameras-obs-roles.png)
+
+**Fig. 3.** What control can see: overhead RGB, overhead depth, side RGB.
+
+#### 2.1 Why depth has to be taken seriously
+
+RGB alone can tell “that is the green cube, that is the black handle.” Shift or yaw the cabinet a little, and pixel size changes, so “how far is this in real space?” stops being stable.
+
+RAX also stresses that an agent should turn **metric depth** into 3D points, then plan the grasp and the pull. We did a smaller version of that in sim:
+
+1. Depth is stored in **millimeters**. The program converts to meters, then uses the camera calibration to get spatial coordinates.
+2. Sim depth is fairly clean. It is there to check that the skill can run by looking, without reading the drawer joint.
+3. Real depth will be noisier and have holes. The program should still own the point cloud it computes. The interface shape is aligned first; a RealSense / Gemini-class camera can replace the source later.
+4. Without depth, color can still luck into the green cube. An action that needs a real distance, such as “place **5.5 cm** farther in, behind the handle,” is hard to keep stable.
+
+That is why **Fig. 1** and **Fig. 3** put depth next to RGB. Depth is a number used for grasp and place, not a cosmetic filter.
+
+### 3. Where the code lives
+
+```
+labs/rax_drawer/
+  environment.py     sim, depth, scoring
+  backend.py         robot-service shaped adapter
+  open_close.py      open/close only (16/20)
+  manifests/         practice scenes / locked test scenes
+  rax_place/
+    tools.py         Session: hides privileged state
+    code/open_place_close/   the frozen open→place→close program (15/20)
+    eval_locked.cmd  one command for the locked test
+```
+
+### 4. How the long task is split (frozen round 3)
+
+What the explore phase tried out was compiled into a few files: perception, velocity moves, forward kinematics, Jacobian position servo, and the top-level `controller.py`. The entry is roughly: open the drawer, then pick and place, then close (see [`controller_stages_snippet.py`](assets/code/controller_stages_snippet.py)).
+
+![Fig. 6 stage split](assets/images/stage-decomposition.png)
+
+**Fig. 6.** Stages A–F. While opening, the program records “which way to pull” and “where the hand grasped.” Closing still uses those two, and never reads the drawer joint.
+
+Why split it? Opening wants soft contact (velocity is easier to tune). Pick-and-place wants centimeter accuracy (joint position servo is easier to tune). After the place, the tray already holds the cube and the pose is messy. Split stages can be repaired one at a time on practice scenes. The top-level controller only passes geometric quantities such as pull direction and grasp point.
+
+#### 4.1 How it “sees” the handle and the cube
+
+Overhead RGB + depth becomes a cloud of points. A dark bar is fit as the lower handle, and the horizontal pull direction is estimated from it. The green region gives the cube center. If either is missing, the episode fails. The program does not fall back to a simulator object id.
+
+#### 4.2 Open the drawer (mostly velocity)
+
+Approach the handle → close the gripper → pull along the open direction. Look again at the handle (or the gripper) to confirm it actually moved, so the grasp is real. Pull on the order of another 7.5 cm (success requires at least 6 cm of extra opening). After release, step aside so the overhead view can see the cube.
+
+#### 4.3 Pick it up and put it in (mostly position)
+
+**Fold the arm, then face the cube (this matters).** After the open, a direct “return to the default pose” often sweeps the arm through the open drawer and shuts it. Folding first, then turning to face the cube, keeps the tray from being closed. That change came from a failure during practice.
+
+Then servo the joints a little at a time to a pose above the cube and close the gripper. A gripper angle that is too “empty” counts as a miss. After the lift, place the cube **5.5 cm farther in** along the pull direction, measured from the **handle seen in this episode**. It should land in the tray, not on the handle bar. Carrying stays in position control. Switching back to velocity mid-carry once shook the cube off.
+
+#### 4.4 Close it again
+
+After the place, the wrist is often crooked. Retreat to the robot side of the drawer, pitch the wrist down, and **lock that wrist angle**. Push back toward the grasp position recorded at open time, finish with a short push, and ask the scorer whether it succeeded.
+
+#### 4.5 Two ways of moving
+
+| Mode | Roughly | Used for |
+| --- | --- | --- |
+| Velocity | Which way to slide, how fast the wrist turns, how fast the gripper opens or closes | Opening, stepping aside, the last bit of the close |
+| Position | Which angle each joint should reach | Folding, grasping, carrying, the wrist-locked close |
+
+Both go through the same `step` call. Only the action fields differ. A later edit to one stage does not have to smear across the whole program.
+
+![Fig. 5 phase strip](assets/images/phase-strip-place.png)
+
+**Fig. 5.** Snapshots from the start to the end of one successful episode.
+
+![Fig. 8 side view of open/close](assets/gifs/open_close.gif)
+
+**Fig. 8.** Side view of open/close only (practice scene 0).
+
+### 4.6 What we changed so a small cabinet shift still works
+
+“Generalization” here means: **the cabinet can shift a few centimeters and yaw a few degrees, and the same program still runs.** It does not mean new lighting, new textures, or a real robot. That work is not in this note.
+
+**On the rules:**
+
+- Practice scenes and locked-test scenes are drawn apart. The test list is not visible during development.
+- Where the cabinet sits, and how much it yaws, stays hidden from the controller on every episode.
+- Before the freeze, a slice of the practice list that was not used to tune details is kept as a self-check (about 13/20). That cuts “it only works on the episodes we just edited.”
+
+**On seeing:**
+
+- Every episode re-estimates handle direction and cube position from overhead RGB-D. World coordinates are not hard-coded.
+- The place point is 5.5 cm farther in from the handle seen in this episode.
+- Whether the open actually grasped is confirmed by looking again for motion, not by reading the drawer joint.
+
+**On motion (changed after practice failures):**
+
+| Change | What it was for |
+| --- | --- |
+| Fold, then face the cube; do not snap back to the default pose | Some layouts made the return sweep shut the drawer |
+| Gripper-angle filter for an empty grasp | “I thought I had it” depended on where the cube sat |
+| Stay in position control while carrying | Velocity after a layout change shook the cube off |
+| Lock the wrist on the close, and reuse the grasp point from the open | After the place the pose was messy and the handle had moved relative to the hand |
+| Two approach clearances (about 1.2 cm / 0.5 cm) | Contact distance was sensitive to the layout |
+
+**Visible evidence:** Fig. 7 is the same open/close program on six cabinet layouts. Open → place → close on the locked test is **15/20**. Failures remain (out of reach, not fully closed, and so on), so this is **partial** generalization.
+
+**Not in this note:** lighting or material randomization, simulated depth noise, a real-robot transfer, and the paper’s “more exploration, higher score” curves.
+
+![Fig. 7 six layouts](assets/gifs/open_close_grid_en.gif)
+
+**Fig. 7.** The same open/close program, six translation/yaw layouts (overhead on top, side view below, in each cell).
+
+### 5. Where the scores come from, and what failed
+
+| Round | Roughly, on practice scenes | Locked test |
+| --- | --- | --- |
+| Round 1 | self-check about 9/12 | **4 / 20** |
+| Round 2 | fold-then-grasp; practice 4/12 | **3 / 20** |
+| Round 3 | place 5.5 cm farther in, wrist-locked close; practice self-check below | **15 / 20** |
+
+**How to read the numbers:** day-to-day edits happen only on the practice list. The locked 20 scenes are scored once after the freeze. The program is **not** edited after seeing a failing test (that would be editing against the answer). Before the round-3 freeze: about **18/24** on the first 24 practice episodes, and about **13/20** on another 20 practice scenes (used only to decide “can we freeze?”). The number we report outside is the locked test, **15/20**.
+
+![Fig. 4 scoring protocol](assets/images/explore-freeze-test.png)
+
+**Fig. 4.** Practice → freeze → one pass on the locked test.
+
+Usual failures: the arm knocks the drawer shut while carrying the cube; the cube lands on the handle; the close misses the handle; a few layouts are out of reach. An earlier, less disciplined place script scored only about 6/20 on the same locked set, which is evidence that the task itself is hard. That old script cannot be imported into the current session controller.
+
+### 6. Reproduce
+
+```bash
+git clone --recursive https://github.com/rocPAI-Forge/so101-simstudio.git
+cd so101-simstudio
+make rocm-sync && source .venv-rocm/bin/activate
+
+./labs/rax_drawer/rax_place/eval_locked.cmd
+
+MUJOCO_GL=egl python -m labs.rax_drawer.rax_place.render_place_gif \
+  --split test --scene 1
+```
+
+More notes in the repo: `labs/rax_drawer/rax_place/RAX_METHOD.md` and `PROCESS.md`. Freeze tag: `CONTROLLER_FROZEN_3`. Result file: `locked_test_3.json`.
+
+### 7. What we deliberately left unused
+
+We did not force SmolVLA / pi0.5 onto this drawer task (no demos, and the cameras do not match). We did not servo the drawer joint directly. We did not edit the program after looking at locked-test failures.
+
+### 8. References
+
+```
+Huang et al., Scaling Online Exploration for Robot Agents, arXiv:2610.22496, 2026.
+https://arxiv.org/abs/2610.22496
+```
+
+- Code: [so101-simstudio](https://github.com/rocPAI-Forge/so101-simstudio) · [`labs/rax_drawer/`](https://github.com/rocPAI-Forge/so101-simstudio/tree/main/labs/rax_drawer)
+- Concise digest: [README.md](README.md)
