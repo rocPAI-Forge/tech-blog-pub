@@ -1,0 +1,8 @@
+# Hugo 站点发布元数据(sidecar) — 供 rocPAI-Forge.github.io 的 sync_from_pub.py 读取
+slug = "so101-simstudio-rax-act-depth"
+date = 2026-11-05
+author = "rocPAI-Lab"
+tags = ["ROCm", "MuJoCo", "SO-101", "ACT", "RAX", "LeRobot"]
+title_zh = "延续 RAX 开抽屉：用轨迹做数据，深度提高 ACT 成功率"
+title_en = "After the RAX Drawer: Scale the Data, and Depth Lifts ACT"
+publish = true
